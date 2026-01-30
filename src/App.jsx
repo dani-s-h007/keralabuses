@@ -350,13 +350,14 @@ export default function App() {
     return hasFrom && hasTo && isDirectionCorrect && matchesType;
   });
 
-  // --- DIGITAL BOARD LOGIC ---
+  // --- DIGITAL BOARD LOGIC (FIXED: Deduplication) ---
   const getBoardBuses = () => {
     if (!boardStop) return [];
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    return buses
+    // 1. Map to raw upcoming buses
+    const upcomingRaw = buses
         .filter(bus => {
             if (!bus.detailedStops) return false;
             const stop = bus.detailedStops.find(s => s.name.toLowerCase() === boardStop.toLowerCase());
@@ -367,9 +368,21 @@ export default function App() {
         .map(bus => {
             const stop = bus.detailedStops.find(s => s.name.toLowerCase() === boardStop.toLowerCase());
             return { ...bus, boardTime: stop.time, boardMins: getMinutesFromMidnight(stop.time) };
-        })
-        .sort((a, b) => a.boardMins - b.boardMins)
-        .slice(0, 10);
+        });
+
+    // 2. Remove Duplicates based on (Name + Route + Time)
+    const seen = new Set();
+    const uniqueBuses = [];
+    for (const bus of upcomingRaw) {
+        const uniqueKey = `${bus.name}-${bus.route}-${bus.boardTime}`;
+        if (!seen.has(uniqueKey)) {
+            seen.add(uniqueKey);
+            uniqueBuses.push(bus);
+        }
+    }
+
+    // 3. Sort by time and slice
+    return uniqueBuses.sort((a, b) => a.boardMins - b.boardMins).slice(0, 10);
   };
 
   const openBoard = () => {
@@ -706,7 +719,7 @@ export default function App() {
                                         </button>
 
                                         {[
-                                            { t: "Official KSRTC Booking", l: "https://online.keralartc.com" },
+                                            { t: "Official KSRTC Booking", l: "https://www.keralartc.com/" },
                                             { t: "Student Concession", l: "https://concessionksrtc.com/school-register" },
                                             { t: "Check Fare Rates (MVD)", l: "https://mvd.kerala.gov.in" },
                                             { t: "Live Traffic Status", l: "https://google.com/maps" }

@@ -33,8 +33,8 @@ export const ImageCarousel = () => {
        {/* Overlay Gradient */}
        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
        <div className="absolute bottom-4 left-4 text-white max-w-lg z-10">
-          <h2 className="text-xl font-bold mb-0.5 drop-shadow-sm">Travel Kerala</h2>
-          <p className="text-xs opacity-90 drop-shadow-sm font-medium">Timings for KSRTC & Private buses.</p>
+          <h2 className="text-xl font-bold mb-0.5 drop-shadow-sm">Kerala Bus Timings & Live Status</h2>
+          <p className="text-xs opacity-90 drop-shadow-sm font-medium">Search KSRTC, Swift & Private Bus Routes Instantly.</p>
        </div>
        {/* Dots */}
        <div className="absolute bottom-3 right-4 flex justify-center gap-1.5 z-10">
@@ -210,7 +210,7 @@ export const SeoContent = ({ onQuickSearch }) => (
             <h2 className="text-base font-bold text-gray-900 mb-3 pb-2 border-b border-gray-50">Kerala Bus Timings & Route Planner - KSRTC & Private</h2>
             <div className="text-xs text-gray-600 leading-relaxed space-y-2 mb-3">
                 <p>
-                    Find the most accurate and up-to-date <strong>Kerala Bus Timings</strong>. Whether you are looking for <strong>KSRTC Super Fast</strong>, <strong>Low Floor AC</strong>, <strong>Swift Deluxe</strong>, or <strong>Private Bus</strong> schedules, evidebus.com is your ultimate travel companion. We cover all major districts including Malappuram, Kozhikode, Wayanad, Palakkad, Thrissur, Ernakulam, and Thiruvananthapuram.
+                    Find the most accurate and up-to-date <strong>Kerala Bus Timings</strong>. Whether you are looking for <strong>KSRTC Super Fast</strong>, <strong>Low Floor AC</strong>, <strong>Swift Deluxe</strong>, or <strong>Private Bus</strong> schedules, evidebus.in is your ultimate travel companion. We cover all major districts including Malappuram, Kozhikode, Wayanad, Palakkad, Thrissur, Ernakulam, and Thiruvananthapuram.
                 </p>
                 <p>
                     Plan your journey from <strong>Pandikkad to Perinthalmanna</strong>, <strong>Manjeri to Kozhikode</strong>, or any other route with our easy-to-use search engine. Get live updates, report delays, and contribute to the community.
