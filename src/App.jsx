@@ -10,10 +10,10 @@ import {
 } from 'lucide-react';
 
 // --- ASSET IMPORTS ---
-import busImg1 from './assets/bus/evidebus.png';
-import busImg2 from './assets/bus/evidebus_ksrtc.png';
-import busImg3 from './assets/bus/evidebus_private_bus.png';
-import busImg4 from './assets/bus/evidebus_ksrtc_volvo.png';
+import busImg1 from './assets/bus/keralabuses.png';
+import busImg2 from './assets/bus/keralabuses_ksrtc.png';
+import busImg3 from './assets/bus/keralabuses_private_bus.png';
+import busImg4 from './assets/bus/keralabuses_ksrtc_volvo.png';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from "firebase/app";
