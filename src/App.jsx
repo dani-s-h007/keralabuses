@@ -10,10 +10,10 @@ import {
 } from 'lucide-react';
 
 // --- ASSET IMPORTS ---
-import busImg1 from './assets/bus/keralabuses.png';
-import busImg2 from './assets/bus/keralabuses_ksrtc.png';
-import busImg3 from './assets/bus/keralabuses_private_bus.png';
-import busImg4 from './assets/bus/keralabuses_ksrtc_volvo.png';
+import busImg1 from './assets/bus/evidebus.png';
+import busImg2 from './assets/bus/evidebus_ksrtc.png';
+import busImg3 from './assets/bus/evidebus_private_bus.png';
+import busImg4 from './assets/bus/evidebus_ksrtc_volvo.png';
 
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from "firebase/app";
@@ -120,12 +120,12 @@ const generateSchema = (pageType, data = {}) => {
     return {
       "@context": "https://schema.org",
       "@type": "WebSite",
-      "name": "KeralaBuses.in",
-      "url": "https://keralabuses.in",
+      "name": "evidebus.in",
+      "url": "https://evidebus.in",
       "description": "Find accurate bus timings for Kerala Private and KSRTC buses.",
       "potentialAction": {
         "@type": "SearchAction",
-        "target": "https://keralabuses.in/#/search/{search_term_string}",
+        "target": "https://evidebus.in/#/search/{search_term_string}",
         "query-input": "required name=search_term_string"
       }
     };
@@ -204,7 +204,7 @@ const FooterPage = ({ type, onBack }) => {
             title: "About Us", 
             body: (
                 <>
-                    <p className="mb-4">KeralaBuses.in is a pioneering community-driven platform dedicated to digitizing the public transport network of Kerala.</p>
+                    <p className="mb-4">evidebus.in is a pioneering community-driven platform dedicated to digitizing the public transport network of Kerala.</p>
                     
                     <h4 className="font-bold text-lg text-gray-800 mt-6 mb-2">Our Mission</h4>
                     <p className="mb-4">To bridge the gap between passengers and bus schedules by providing a reliable, user-updated database of KSRTC and Private bus timings.</p>
@@ -212,7 +212,7 @@ const FooterPage = ({ type, onBack }) => {
                     <h4 className="font-bold text-lg text-gray-800 mt-6 mb-2">Who We Are</h4>
                     <p className="mb-4">We are a team of passionate developers and transport enthusiasts who believe that information should be accessible to everyone. We are not affiliated with the government but work tirelessly to ensure the data is as accurate as possible through community verification.</p>
                     
-                    <h4 className="font-bold text-lg text-gray-800 mt-6 mb-2">Why Use KeralaBuses.in?</h4>
+                    <h4 className="font-bold text-lg text-gray-800 mt-6 mb-2">Why Use evidebus.in?</h4>
                     <ul className="list-disc pl-5 space-y-2 text-sm">
                         <li>Real-time updates from fellow passengers.</li>
                         <li>Comprehensive coverage of rural and urban routes.</li>
@@ -231,7 +231,7 @@ const FooterPage = ({ type, onBack }) => {
                     <div className="space-y-6">
                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                             <h5 className="font-bold text-teal-700 mb-2">General Inquiries</h5>
-                            <p className="text-sm">Email: <a href="mailto:support@keralabuses.in" className="text-blue-600 hover:underline">support@keralabuses.in</a></p>
+                            <p className="text-sm">Email: <a href="mailto:support@evidebus.in" className="text-blue-600 hover:underline">support@evidebus.in</a></p>
                             <p className="text-sm">Phone: +91 80866 16247</p>
                         </div>
                         
@@ -242,7 +242,7 @@ const FooterPage = ({ type, onBack }) => {
 
                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                             <h5 className="font-bold text-gray-700 mb-2">Office Address</h5>
-                            <p className="text-sm text-gray-600">KeralaBuses Tech Labs,<br/>Infopark Campus,<br/>Malappuram, Kerala, 676505</p>
+                            <p className="text-sm text-gray-600">evidebus Tech Labs,<br/>Infopark Campus,<br/>Malappuram, Kerala, 676505</p>
                         </div>
                     </div>
                 </>
@@ -286,7 +286,7 @@ const FooterPage = ({ type, onBack }) => {
             body: (
                 <>
                     <h4 className="font-bold text-lg text-gray-800 mt-4 mb-2">1. Acceptance of Terms</h4>
-                    <p className="mb-4 text-sm">By accessing KeralaBuses.in, you agree to be bound by these terms.</p>
+                    <p className="mb-4 text-sm">By accessing evidebus.in, you agree to be bound by these terms.</p>
 
                     <h4 className="font-bold text-lg text-gray-800 mt-6 mb-2">2. Accuracy of Information</h4>
                     <p className="mb-4 text-sm">This website is a community-driven platform. While we strive for accuracy, bus timings are subject to change by operators without notice. We are not liable for any loss, delay, or inconvenience caused by reliance on this information.</p>
@@ -295,7 +295,7 @@ const FooterPage = ({ type, onBack }) => {
                     <p className="mb-4 text-sm">Users are responsible for the accuracy of the data they contribute. Malicious or false data entry will result in a ban.</p>
 
                     <h4 className="font-bold text-lg text-gray-800 mt-6 mb-2">4. Intellectual Property</h4>
-                    <p className="mb-4 text-sm">The content, layout, and code of this website are the property of KeralaBuses.in.</p>
+                    <p className="mb-4 text-sm">The content, layout, and code of this website are the property of evidebus.in.</p>
                 </>
             )
         },
@@ -305,14 +305,14 @@ const FooterPage = ({ type, onBack }) => {
                 <>
                    <div className="bg-red-50 border border-red-100 p-4 rounded-xl mb-6">
                         <h5 className="font-bold text-red-700 flex items-center gap-2 mb-2 text-sm"><AlertTriangle size={18}/> Not an Official Government Website</h5>
-                        <p className="text-red-600 text-xs leading-relaxed">KeralaBuses.in is a privately maintained, community-driven informational portal. We are <strong>NOT</strong> affiliated, associated, authorized, endorsed by, or in any way officially connected with the Kerala State Road Transport Corporation (KSRTC), the Motor Vehicles Department (MVD), or any government agency.</p>
+                        <p className="text-red-600 text-xs leading-relaxed">evidebus.in is a privately maintained, community-driven informational portal. We are <strong>NOT</strong> affiliated, associated, authorized, endorsed by, or in any way officially connected with the Kerala State Road Transport Corporation (KSRTC), the Motor Vehicles Department (MVD), or any government agency.</p>
                    </div>
 
                    <h4 className="font-bold text-lg text-gray-800 mt-6 mb-2">Data Accuracy</h4>
                    <p className="mb-4 text-sm">All bus timings, fares, and routes are based on user contributions and public data. Schedules are subject to change due to traffic, weather, strikes, or operator decisions.</p>
 
                    <h4 className="font-bold text-lg text-gray-800 mt-6 mb-2">Liability</h4>
-                   <p className="text-sm">We recommend verifying critical travel details with the respective bus stations or official enquiry counters. KeralaBuses.in and its maintainers shall not be held liable for any direct, indirect, or consequential damages arising from the use of this website.</p>
+                   <p className="text-sm">We recommend verifying critical travel details with the respective bus stations or official enquiry counters. evidebus.in and its maintainers shall not be held liable for any direct, indirect, or consequential damages arising from the use of this website.</p>
                 </>
             )
         }
@@ -341,7 +341,7 @@ const Footer = ({ setView, onQuickSearch }) => (
                 <div>
                     <div className="flex items-center gap-2 mb-4">
                         <div className="bg-teal-600 text-white p-1.5 rounded-lg"><Bus size={18} /></div>
-                        <span className="text-lg font-bold text-gray-800">KeralaBuses.in</span>
+                        <span className="text-lg font-bold text-gray-800">evidebus.in</span>
                     </div>
                     <p className="text-xs text-gray-500 leading-relaxed mb-4">
                         Kerala's largest community-driven public transport network. Find KSRTC and Private bus timings, stops, and routes easily.
@@ -382,7 +382,7 @@ const Footer = ({ setView, onQuickSearch }) => (
 
             <div className="border-t border-gray-100 pt-8 text-center md:text-left flex flex-col md:flex-row justify-between items-center gap-4">
                 <p className="text-[10px] text-gray-400">
-                    © 2026 KeralaBuses.in. All rights reserved. Not affiliated with KSRTC.
+                    © 2026 evidebus.in. All rights reserved. Not affiliated with KSRTC.
                 </p>
                 <p className="text-[10px] text-gray-400 max-w-md text-justify md:text-right">
                     <strong>Disclaimer:</strong> Timings shown are based on user contributions and may vary. Please verify with official enquiry counters before travel. We are not responsible for missed buses or schedule changes.
@@ -403,7 +403,7 @@ const Navbar = ({ setView, toggleMenu }) => (
                     </div>
                     <div className="flex flex-col">
                         <span className="text-2xl font-extrabold text-gray-800 tracking-tight leading-none">
-                            keralabuses<span className="text-teal-600">.in</span>
+                            evidebus<span className="text-teal-600">.in</span>
                         </span>
                         <span className="text-[10px] text-gray-500 font-medium tracking-wide uppercase">Community Bus Network</span>
                     </div>
@@ -413,7 +413,7 @@ const Navbar = ({ setView, toggleMenu }) => (
                     <button onClick={() => {window.location.hash = ''; setView('home');}} className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-xl transition-all">Home</button>
                     <button onClick={() => setView('ksrtc')} className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-xl transition-all">KSRTC Timings</button>
                     <button onClick={() => setView('private')} className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-xl transition-all">Private Stand</button>
-                    <a href="https://blog.keralabuses.in" target="_blank" rel="noopener noreferrer" className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-xl transition-all">Blog</a>
+                    <a href="https://blog.evidebus.in" target="_blank" rel="noopener noreferrer" className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-teal-700 hover:bg-teal-50 rounded-xl transition-all">Blog</a>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -438,7 +438,7 @@ const MobileMenu = ({ isOpen, setView, closeMenu }) => {
                 <button onClick={() => { setView('home'); closeMenu(); }} className="text-left text-lg font-bold text-gray-800 py-3 border-b border-gray-100">Home</button>
                 <button onClick={() => { setView('ksrtc'); closeMenu(); }} className="text-left text-lg font-bold text-gray-800 py-3 border-b border-gray-100">KSRTC Timings</button>
                 <button onClick={() => { setView('private'); closeMenu(); }} className="text-left text-lg font-bold text-gray-800 py-3 border-b border-gray-100">Private Stand</button>
-                <a href="https://blog.keralabuses.in" className="text-left text-lg font-bold text-gray-800 py-3 border-b border-gray-100">Blog</a>
+                <a href="https://blog.evidebus.in" className="text-left text-lg font-bold text-gray-800 py-3 border-b border-gray-100">Blog</a>
                 <button onClick={() => { setView('add-bus'); closeMenu(); }} className="bg-teal-600 text-white py-3 rounded-xl font-bold mt-4 flex justify-center items-center gap-2">
                     <PlusSquare size={18} /> Add Bus
                 </button>
@@ -621,7 +621,7 @@ const SeoContent = ({ onQuickSearch }) => (
             <h2 className="text-lg font-bold text-gray-900 mb-4 pb-3 border-b border-gray-100">Kerala Bus Timings & Route Planner - KSRTC & Private</h2>
             <div className="text-sm text-gray-600 leading-relaxed space-y-3">
                 <p>
-                    Find the most accurate and up-to-date <strong>Kerala Bus Timings</strong>. Whether you are looking for <strong>KSRTC Super Fast</strong>, <strong>Low Floor AC</strong>, <strong>Swift Deluxe</strong>, or <strong>Private Bus</strong> schedules, KeralaBuses.in is your ultimate travel companion. We cover all major districts including Malappuram, Kozhikode, Wayanad, Palakkad, Thrissur, Ernakulam, and Thiruvananthapuram.
+                    Find the most accurate and up-to-date <strong>Kerala Bus Timings</strong>. Whether you are looking for <strong>KSRTC Super Fast</strong>, <strong>Low Floor AC</strong>, <strong>Swift Deluxe</strong>, or <strong>Private Bus</strong> schedules, evidebus.in is your ultimate travel companion. We cover all major districts including Malappuram, Kozhikode, Wayanad, Palakkad, Thrissur, Ernakulam, and Thiruvananthapuram.
                 </p>
                 <p>
                     Plan your journey from <strong>Pandikkad to Perinthalmanna</strong>, <strong>Manjeri to Kozhikode</strong>, or any other route with our easy-to-use search engine. Get live updates, report delays, and contribute to the community.
@@ -1153,18 +1153,18 @@ export default function App() {
 
   // Load Favorites & Points
   useEffect(() => {
-      const savedFavs = localStorage.getItem('keralaBusesFavs');
+      const savedFavs = localStorage.getItem('evidebusFavs');
       if(savedFavs) setFavorites(JSON.parse(savedFavs));
       
-      const savedPoints = localStorage.getItem('keralaBusesPoints');
+      const savedPoints = localStorage.getItem('evidebusPoints');
       if(savedPoints) setUserPoints(parseInt(savedPoints));
   }, []);
   
   // SEO Injection
   useEffect(() => {
       document.title = view === 'detail' && selectedBus 
-          ? `${selectedBus.route} Bus Timing - KeralaBuses.in`
-          : "KeralaBuses.in - Find Private & KSRTC Bus Timings";
+          ? `${selectedBus.route} Bus Timing - evidebus.in`
+          : "evidebus.in - Find Private & KSRTC Bus Timings";
 
       // Inject JSON-LD Schema
       const scriptId = "json-ld-schema";
@@ -1191,13 +1191,13 @@ export default function App() {
           showToast("Added to favorites", "success");
       }
       setFavorites(newFavs);
-      localStorage.setItem('keralaBusesFavs', JSON.stringify(newFavs));
+      localStorage.setItem('evidebusFavs', JSON.stringify(newFavs));
   };
   
   const addPoints = (amount) => {
       const newPoints = userPoints + amount;
       setUserPoints(newPoints);
-      localStorage.setItem('keralaBusesPoints', newPoints.toString());
+      localStorage.setItem('evidebusPoints', newPoints.toString());
       if (amount > 5) showToast(`+${amount} Contribution Points!`, "success"); // Only notify for big points
   };
 

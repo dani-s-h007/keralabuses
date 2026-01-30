@@ -1,4 +1,4 @@
-# keralabuses.in
+# evidebus.in
 
 A modern, community-driven web application to track Private and KSRTC bus timings across Kerala.
 
