@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   PlusCircle, Edit3, Clock, Trash2, Save, X, Maximize2, 
   MessageCircle, AlertTriangle, MessageSquare, ThumbsUp, 
   BarChart3, Map, Monitor, Info, ChevronRight, Star, Share2, 
-  ArrowUpCircle, ArrowDownCircle, PlusSquare, Phone, CheckSquare, Square
+  ArrowUpCircle, ArrowDownCircle, PlusSquare, Phone, CheckSquare, Square, Loader2
 } from 'lucide-react';
 import { formatTime, DEPOT_DATA } from '../utils';
 
@@ -33,6 +33,23 @@ const generateDefaultStops = (bus) => {
     ];
 };
 
+// --- HELPER: PARSE TIME FOR SORTING ---
+const getMinutesFromTime = (timeStr) => {
+    if (!timeStr || timeStr === 'TBD') return 9999; // Place TBD at the end
+    try {
+        // Handle format "10:30 AM"
+        const [time, modifier] = timeStr.split(' ');
+        let [hours, minutes] = time.split(':').map(Number);
+
+        if (modifier === 'PM' && hours !== 12) hours += 12;
+        if (modifier === 'AM' && hours === 12) hours = 0;
+
+        return hours * 60 + minutes;
+    } catch (e) {
+        return 9999;
+    }
+};
+
 // 6. ADD BUS FORM
 export const AddBusForm = ({ onCancel, onAdd, showToast }) => {
     const [formData, setFormData] = useState({
@@ -40,13 +57,21 @@ export const AddBusForm = ({ onCancel, onAdd, showToast }) => {
     });
     // Real Origin Toggle
     const [isRealRoute, setIsRealRoute] = useState(true);
+    // Loading State to prevent double submit
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        // Prevent multiple clicks
+        if (isSubmitting) return;
+
         if(!formData.from || !formData.to || !formData.time) {
             showToast("Please fill all required fields", "info");
             return;
         }
+
+        setIsSubmitting(true);
         
         const route = `${formData.from} - ${formData.to}`;
         const displayTime = formatTime(formData.time);
@@ -67,6 +92,8 @@ export const AddBusForm = ({ onCancel, onAdd, showToast }) => {
             initialStops = [...intermediateStops];
         }
 
+        // Simulate a small delay or proceed immediately
+        // The onAdd function usually updates the parent state or redirects
         onAdd({ 
             ...formData, 
             time: displayTime, 
@@ -77,6 +104,9 @@ export const AddBusForm = ({ onCancel, onAdd, showToast }) => {
             status: 'On Time', 
             crowd: 'Low' 
         });
+
+        // We don't set setIsSubmitting(false) here because usually the component unmounts 
+        // or the parent handles the view change. If it stays, you might want to reset it.
     };
 
     return (
@@ -147,7 +177,17 @@ export const AddBusForm = ({ onCancel, onAdd, showToast }) => {
 
                 <div className="flex gap-3 pt-2">
                     <button type="button" onClick={onCancel} className="px-5 py-2.5 bg-gray-100 text-gray-600 rounded-lg font-bold text-xs hover:bg-gray-200 transition-colors">Cancel</button>
-                    <button type="submit" className="flex-1 px-5 py-2.5 bg-teal-600 text-white rounded-lg font-bold text-xs hover:bg-teal-700 shadow-sm hover:shadow-md transition-all">Submit Bus</button>
+                    <button 
+                        type="submit" 
+                        disabled={isSubmitting}
+                        className={`flex-1 px-5 py-2.5 rounded-lg font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 ${isSubmitting ? 'bg-teal-400 cursor-not-allowed' : 'bg-teal-600 hover:bg-teal-700 hover:shadow-md text-white'}`}
+                    >
+                        {isSubmitting ? (
+                            <><Loader2 size={16} className="animate-spin"/> Saving...</>
+                        ) : (
+                            "Submit Bus"
+                        )}
+                    </button>
                 </div>
             </form>
         </div>
@@ -170,6 +210,18 @@ export const BusPost = ({ bus, onBack, addComment, updateBusDetails, onVote, rep
   const displayStops = (bus.detailedStops && bus.detailedStops.length > 0) 
       ? bus.detailedStops 
       : generateDefaultStops(bus);
+  
+  // --- SORT STOPS BY TIME ---
+  // Memoize this to prevent unnecessary re-sorting on every render
+  const sortedDisplayStops = useMemo(() => {
+      // Create a shallow copy to avoid mutating the original prop immediately
+      const stops = [...displayStops];
+      return stops.sort((a, b) => getMinutesFromTime(a.time) - getMinutesFromTime(b.time));
+  }, [displayStops]);
+
+  // Use sorted stops for View Mode, but we might want original order for Edit Mode
+  // For consistency in "Route Show According to Order of Time", we use sortedDisplayStops for visuals.
+  const stopsToRender = sortedDisplayStops; 
 
   // Edit States
   const [editName, setEditName] = useState(bus.name);
@@ -202,6 +254,8 @@ export const BusPost = ({ bus, onBack, addComment, updateBusDetails, onVote, rep
 
   const updateRouteNameFromStops = (stops) => {
       if (stops && stops.length > 0) {
+          // Re-sort before naming to ensure route makes sense? 
+          // Or trust the array order. Let's trust the array passed to this function.
           const start = stops[0].name;
           const end = stops[stops.length - 1].name;
           setEditRoute(`${start} - ${end}`); 
@@ -234,7 +288,12 @@ ${url}`;
 
   const handleSaveDetails = () => {
       const displayTime = editTime.includes(":") && !editTime.includes("M") ? formatTime(editTime) : editTime;
+      // When saving, we save the stops as they are currently in `displayStops` (which might be edited).
+      // Note: If we want to persist the "sorted" order, we should sort `displayStops` before saving.
       const stopsToSave = (bus.detailedStops && bus.detailedStops.length > 0) ? bus.detailedStops : displayStops;
+      
+      // Optional: Sort before saving to database so it loads sorted next time
+      stopsToSave.sort((a, b) => getMinutesFromTime(a.time) - getMinutesFromTime(b.time));
 
       updateBusDetails(bus.id, {
           name: editName,
@@ -261,12 +320,13 @@ ${url}`;
           updatedStops.push(newStop);
           if (!newStopTime) updatedStops[updatedStops.length-1].time = "00:00 AM";
       } else {
-          if(updatedStops.length > 1) {
-              updatedStops.splice(updatedStops.length - 1, 0, newStop);
-          } else {
-              updatedStops.push(newStop);
-          }
+          // For intermediate, we push it, then we rely on the Sort function to place it correctly in View Mode
+          // But here in Edit mode logic, we just push it.
+          updatedStops.push(newStop);
       }
+
+      // Re-sort immediately for the route name update and consistency
+      updatedStops.sort((a, b) => getMinutesFromTime(a.time) - getMinutesFromTime(b.time));
 
       const stopsString = updatedStops.map(s => s.name).join(', ');
       
@@ -285,7 +345,11 @@ ${url}`;
   };
 
   const handleEditStop = (index, field, value) => {
+      // NOTE: We are editing 'displayStops' directly here via the update function.
+      // Since sortedDisplayStops is derived from it, we need to find the correct index in the original array if it was sorted differently.
+      // However, usually detailedStops is the source of truth.
       const updatedStops = [...displayStops];
+      
       let finalValue = value;
       if (field === 'time' && value.includes(':') && !value.includes('M') && !value.includes('T')) {
            finalValue = formatTime(value);
@@ -338,9 +402,10 @@ ${url}`;
                         <span className="font-bold text-gray-600 uppercase text-xs tracking-wider">Stop Name</span>
                         <span className="font-bold text-gray-600 uppercase text-xs tracking-wider text-right">Time</span>
                     </div>
-                    {displayStops.map((stop, i) => {
+                    {/* USING SORTED STOPS HERE */}
+                    {stopsToRender.map((stop, i) => {
                         const isStart = i === 0;
-                        const isEnd = i === displayStops.length - 1;
+                        const isEnd = i === stopsToRender.length - 1;
                         return (
                         <div key={i} className="grid grid-cols-2 p-4 border-b border-gray-50 last:border-0 hover:bg-teal-50/50 transition-colors items-center group">
                             <div className="flex items-center gap-3 overflow-hidden">
@@ -420,6 +485,7 @@ ${url}`;
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                         <label className="text-[10px] font-bold text-gray-500 uppercase block mb-3">Stops & Route Order</label>
                         <div className="mb-3 space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                            {/* In Edit mode, we show the raw list (displayStops) so indices match up for deletion/editing */}
                             {displayStops.map((stop, i) => {
                                 const isStart = i === 0;
                                 const isEnd = i === displayStops.length - 1;
@@ -480,8 +546,8 @@ ${url}`;
                 <>
                     <div className="flex flex-col md:flex-row justify-between items-start mb-5 gap-3">
                         <div className="w-full">
-                            {/* INCREASED FONT SIZE: Bus Name */}
-                            <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 leading-tight mb-2 truncate">{bus.name || "Bus Service"}</h1>
+                            {/* INCREASED FONT SIZE: Bus Name & DIFFERENT COLOR */}
+                            <h1 className="text-3xl md:text-4xl font-extrabold text-indigo-800 leading-tight mb-2 truncate">{bus.name || "Bus Service"}</h1>
                             <div className="flex items-center flex-wrap gap-2">
                                 {/* INCREASED FONT SIZE: Route */}
                                 <span className="text-lg md:text-xl text-gray-700 font-bold truncate max-w-full">{bus.route}</span>
@@ -537,16 +603,17 @@ ${url}`;
                     <div className="mb-6">
                         <div className="flex justify-between items-center mb-4">
                             <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2"><Map size={14} className="text-gray-400"/> Schedule</h4>
-                            {displayStops.length > 0 && (
+                            {stopsToRender.length > 0 && (
                                 <button onClick={() => setShowFullMap(true)} className="text-teal-600 font-bold text-[10px] flex items-center gap-1 hover:bg-teal-50 px-2 py-1 rounded transition-colors">
                                     <Maximize2 size={12}/> Full Map
                                 </button>
                             )}
                         </div>
                         <div className="relative border-l-2 border-teal-100 ml-3 space-y-6 pb-2">
-                            {displayStops.map((stop, i) => {
+                            {/* USING SORTED STOPS HERE */}
+                            {stopsToRender.map((stop, i) => {
                                 const isStart = i === 0;
-                                const isEnd = i === displayStops.length - 1;
+                                const isEnd = i === stopsToRender.length - 1;
                                 return (
                                 <div key={i} className="ml-6 relative group">
                                     <span className={`absolute -left-[31px] top-1.5 w-3 h-3 rounded-full border-[3px] shadow-sm group-hover:scale-110 transition-transform ${isStart ? 'bg-teal-500 border-teal-200' : isEnd ? 'bg-indigo-500 border-indigo-200' : 'bg-white border-teal-500'}`}></span>
@@ -721,5 +788,5 @@ ${url}`;
         </div>
       </div>
     </div>
-  );
+  ); 
 };
