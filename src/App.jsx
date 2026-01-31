@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, MapPin, ArrowRightLeft, ChevronRight, Clock, Bus, Trophy, Star, Monitor, X, Maximize2, Sun, Moon, PlusCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Search, MapPin, ArrowRightLeft, ChevronRight, Clock, Bus, Trophy, Star, Monitor, X, Maximize2, Sun, Moon, PlusCircle, Phone } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, arrayUnion, query, orderBy, increment } from "firebase/firestore";
 
-// --- IMPORTS FROM OTHER FILES ---
-import { BUS_STOPS, getMinutesFromMidnight, calculateFare, generateSchema, SEED_BUSES } from './utils';
-import { ToastContainer, Navbar, MobileMenu, Footer, FooterPage } from './components/Layout';
+// --- IMPORTS ---
+import { BUS_STOPS, getMinutesFromMidnight, calculateFare, generateSchema, SEED_BUSES, DEPOT_DATA } from './utils';
+import { ToastContainer, Navbar, MobileMenu, Footer, FooterPage, SkeletonCard, BusStandList } from './components/Layout';
 import { ImageCarousel, NewsTicker, FareCalculator, Sidebar, SeoContent } from './components/Widgets';
 import { AddBusForm, BusPost } from './components/BusFeatures';
 
@@ -28,8 +29,16 @@ try {
   console.warn("Firebase not connected. Please update firebaseConfig.");
 }
 
+// --- HELPER: GENERATE SEO SLUG ---
+// Creates a URL like: /bus/manjeri-to-kozhikode-0830-am-private
+const generateBusSlug = (bus) => {
+    const clean = (str) => str ? str.toLowerCase().replace(/[^a-z0-9]/g, '-') : '';
+    const timeClean = bus.time ? bus.time.toLowerCase().replace(' ', '-').replace(':', '') : '0000';
+    return `${clean(bus.from)}-to-${clean(bus.to)}-${timeClean}-${clean(bus.type)}`;
+};
+
 // --- HELPER: LIVE CLOCK COMPONENT ---
-const LiveClock = ({ darkMode }) => {
+const LiveClock = React.memo(({ darkMode }) => {
     const [time, setTime] = useState(new Date());
     useEffect(() => {
         const timer = setInterval(() => setTime(new Date()), 1000);
@@ -42,6 +51,68 @@ const LiveClock = ({ darkMode }) => {
             </div>
             <div className={`text-xs md:text-sm font-bold uppercase tracking-widest ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 {time.toDateString()}
+            </div>
+        </div>
+    );
+});
+
+// --- DEPOT ENQUIRY COMPONENT ---
+const DepotEnquiry = () => {
+    const [activeAccordion, setActiveAccordion] = useState(null);
+    const toggleAccordion = (index) => setActiveAccordion(activeAccordion === index ? null : index);
+
+    return (
+        <div className="animate-fade-in space-y-6">
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                    <Phone className="text-teal-600" size={24}/> Kerala RTC General Enquiry
+                </h2>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
+                    <div>
+                        <h6 className="font-bold text-sm text-gray-700">Reservation & Route Enquiry</h6>
+                        <div className="flex gap-3 mt-1 text-sm">
+                            <a href="tel:04712463799" className="text-teal-700 font-medium hover:underline">0471-2463799</a>,
+                            <a href="tel:9447071021" className="text-teal-700 font-medium hover:underline">9447071021</a>
+                        </div>
+                    </div>
+                    <div>
+                        <h6 className="font-bold text-sm text-gray-700">Toll Free</h6>
+                        <a href="tel:18005994011" className="text-teal-700 font-medium text-sm hover:underline">1800-599-4011</a>
+                    </div>
+                    <div>
+                        <h6 className="font-bold text-sm text-gray-700">WhatsApp (We Social)</h6>
+                        <a href="https://wa.me/919497722205" target="_blank" className="text-green-600 font-medium text-sm hover:underline">9497722205</a>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                <h3 className="text-lg font-bold text-gray-900 mb-4">Depot Contact Numbers</h3>
+                <div className="space-y-2">
+                    {DEPOT_DATA.map((data, index) => (
+                        <div key={index} className="border border-gray-200 rounded-xl overflow-hidden">
+                            <button 
+                                onClick={() => toggleAccordion(index)}
+                                className="w-full flex justify-between items-center p-4 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                            >
+                                <span className="font-bold text-sm text-gray-800">{data.district}</span>
+                                <ChevronRight size={16} className={`text-gray-500 transition-transform ${activeAccordion === index ? 'rotate-90' : ''}`} />
+                            </button>
+                            {activeAccordion === index && (
+                                <div className="bg-white p-2">
+                                    {data.depots.map((depot, i) => (
+                                        <div key={i} className="flex justify-between items-center p-3 border-b border-gray-50 last:border-0 hover:bg-teal-50/30 rounded-lg">
+                                            <span className="text-xs font-medium text-gray-700">{depot.name}</span>
+                                            <a href={`tel:${depot.phone}`} className="text-[10px] bg-green-50 text-green-700 px-3 py-1.5 rounded-full border border-green-100 font-bold hover:bg-green-100 flex items-center gap-1">
+                                                <Phone size={10} /> Call
+                                            </a>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );
@@ -63,7 +134,9 @@ export default function App() {
   const [showBoardInput, setShowBoardInput] = useState(false);
   const [boardDarkMode, setBoardDarkMode] = useState(false);
 
-  // Ref for auto-scrolling to results
+  // Routing Hooks
+  const location = useLocation();
+  const navigate = useNavigate();
   const resultsRef = useRef(null);
 
   // Search State
@@ -74,13 +147,13 @@ export default function App() {
   const [suggestionsTo, setSuggestionsTo] = useState([]);
   const [suggestionsBoard, setSuggestionsBoard] = useState([]); 
 
-  const showToast = (message, type = 'info') => {
+  const showToast = useCallback((message, type = 'info') => {
       const id = Date.now();
       setToasts(prev => [...prev, { id, message, type }]);
       setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
-  };
+  }, []);
 
-  // Load Favorites & Points
+  // Load Persistence
   useEffect(() => {
       const savedFavs = localStorage.getItem('evidebusFavs');
       if(savedFavs) setFavorites(JSON.parse(savedFavs));
@@ -88,11 +161,66 @@ export default function App() {
       if(savedPoints) setUserPoints(parseInt(savedPoints));
   }, []);
 
-  // SEO Injection
+  // SEO Injection & Router Logic
   useEffect(() => {
-      document.title = view === 'detail' && selectedBus 
-          ? `${selectedBus.route} Bus Timing - evidebus.in`
-          : "evidebus.in - Find Private & KSRTC Bus Timings";
+      const path = location.pathname;
+      const params = path.split('/'); 
+
+      // 1. Bus Detail URL: /bus/manjeri-to-kozhikode-0830-am-private
+      if (path.startsWith('/bus/')) {
+          const busSlug = params[2]; // Get the human-readable slug
+          if (buses.length > 0) {
+              // Find the bus by regenerating the slug for each bus and matching
+              const bus = buses.find(b => generateBusSlug(b) === busSlug);
+              
+              if (bus) {
+                  setSelectedBus(bus);
+                  setView('detail');
+              } else {
+                  // Fallback: Check if it's an old ID link just in case
+                  const busById = buses.find(b => b.id === busSlug);
+                  if (busById) {
+                      setSelectedBus(busById);
+                      setView('detail');
+                  }
+              }
+          }
+      } else if (path.startsWith('/search/')) {
+          if (params[2]) setSearchFrom(decodeURIComponent(params[2]));
+          const toVal = decodeURIComponent(params[3] || '');
+          setSearchTo(toVal === '-' ? '' : toVal);
+          if (params[4]) setFilterType(params[4]);
+          setView('results');
+      } else if (path.startsWith('/board/')) {
+          const station = decodeURIComponent(params[2] || '');
+          if(station) {
+              setBoardStop(station);
+              setView('board');
+              setShowBoardInput(false);
+          }
+      } else if (path === '/depot') {
+          setView('depot');
+      } else if (path === '/stands') {
+          setView('bus-stands');
+      } else if (path === '/add-bus') {
+          setView('add-bus');
+      } else if (path === '/ksrtc') {
+          setView('ksrtc');
+      } else if (path === '/private') {
+          setView('private');
+      } else if (['/about', '/contact', '/privacy', '/terms', '/disclaimer'].includes(path)) {
+          setView(path.substring(1));
+      } else {
+          setView('home');
+      }
+
+      // SEO Titles
+      let title = "evidebus.com - Find Private & KSRTC Bus Timings";
+      if (view === 'detail' && selectedBus) title = `${selectedBus.route} ${selectedBus.time} Bus Timing - evidebus.com`;
+      if (view === 'depot') title = "Kerala KSRTC Depot Contact Numbers - evidebus.com";
+      if (view === 'bus-stands') title = "Kerala Bus Stand List - evidebus.com";
+      if (view === 'board') title = `${boardStop} Live Bus Stand Status - evidebus.com`;
+      document.title = title;
       
       const scriptId = "json-ld-schema";
       let script = document.getElementById(scriptId);
@@ -102,9 +230,10 @@ export default function App() {
           script.type = "application/ld+json";
           document.head.appendChild(script);
       }
-      const schemaData = generateSchema(view, selectedBus);
+      const schemaData = generateSchema(view === 'home' ? 'home' : 'bus', selectedBus);
       if (schemaData) script.text = JSON.stringify(schemaData);
-  }, [view, selectedBus]);
+
+  }, [location, buses, loading, view, selectedBus, boardStop]);
 
   // Firebase Listener
   useEffect(() => {
@@ -117,6 +246,7 @@ export default function App() {
       const busData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setBuses(busData);
       setLoading(false);
+      // Sync selected bus details in real-time
       if(selectedBus) {
         const updatedSelected = busData.find(b => b.id === selectedBus.id);
         if(updatedSelected) setSelectedBus(updatedSelected);
@@ -125,7 +255,7 @@ export default function App() {
     return () => unsubscribe();
   }, [selectedBus]);
 
-  // Scroll to results when view changes to 'results'
+  // Scroll to results
   useEffect(() => {
     if (view === 'results' && resultsRef.current) {
       setTimeout(() => {
@@ -198,8 +328,7 @@ export default function App() {
           await addDoc(collection(db, "buses"), newBusData);
           showToast("Bus added successfully! +20 Points", "success");
           addPoints(20);
-          setView('home');
-          window.location.hash = '';
+          navigate('/'); 
       } catch(e) {
           console.error(e);
           showToast("Error adding bus", "error");
@@ -237,7 +366,6 @@ export default function App() {
           return; 
       }
       const filtered = BUS_STOPS.filter(stop => stop.toLowerCase().startsWith(val.toLowerCase())).slice(0, 8);
-      
       if(type === 'from') setSuggestionsFrom(filtered);
       else if(type === 'to') setSuggestionsTo(filtered);
       else if(type === 'board') setSuggestionsBoard(filtered);
@@ -256,18 +384,19 @@ export default function App() {
   };
 
   const handleFindBus = () => {
-      window.location.hash = `#/search/${encodeURIComponent(searchFrom)}/${encodeURIComponent(searchTo)}/${filterType}`;
+      const toParam = searchTo.trim() || '-';
+      navigate(`/search/${encodeURIComponent(searchFrom)}/${encodeURIComponent(toParam)}/${filterType}`);
   };
 
   const handleQuickSearch = (term) => {
-      setSearchTo(term);
-      setSearchFrom(''); 
-      setFilterType('all');
-      setView('results');
+      const toParam = term.trim() || '-';
+      navigate(`/search/-/${encodeURIComponent(toParam)}/all`);
   };
 
+  // UPDATED: Navigates using the readable slug
   const handleBusClick = (bus) => {
-      window.location.hash = `#/bus/${bus.id}`;
+      const slug = generateBusSlug(bus);
+      navigate(`/bus/${slug}`);
   };
 
   const handleSelectFavorite = (favBus) => {
@@ -279,84 +408,47 @@ export default function App() {
       }
   };
 
-  // URL SYNC LOGIC (HASH ROUTER)
-  useEffect(() => {
-      const handleHashChange = () => {
-          const hash = window.location.hash;
-          if (hash.startsWith('#/bus/')) {
-              const busId = hash.replace('#/bus/', '');
-              if (buses.length > 0) {
-                  const bus = buses.find(b => b.id === busId);
-                  if (bus) {
-                      setSelectedBus(bus);
-                      setView('detail');
-                  }
-              }
-          } else if (hash.startsWith('#/search/')) {
-              const parts = hash.split('/');
-              if (parts[2]) setSearchFrom(decodeURIComponent(parts[2]));
-              if (parts[3]) setSearchTo(decodeURIComponent(parts[3]));
-              if (parts[4]) setFilterType(parts[4]);
-              setView('results');
-          } else {
-              if (!['ksrtc', 'private', 'add-bus', 'about', 'contact', 'privacy', 'terms', 'disclaimer', 'board'].includes(view)) {
-                 if (view !== 'detail' && view !== 'results') setView('home');
-              }
-          }
-      };
-
-      window.addEventListener('hashchange', handleHashChange);
+  // Filter Logic - OPTIMIZED
+  const filteredBuses = useMemo(() => {
+    return buses.filter(bus => {
+      const sFrom = searchFrom.toLowerCase().trim();
+      const sTo = searchTo.toLowerCase().trim();
+      const stopsStr = (bus.stops || bus.route || "").toLowerCase();
+      const fullPath = `${(bus.from || "").toLowerCase()} ${stopsStr} ${(bus.to || "").toLowerCase()}`;
       
-      if(!loading && buses.length > 0) {
-          handleHashChange();
+      const hasFrom = !sFrom || fullPath.includes(sFrom);
+      const hasTo = !sTo || fullPath.includes(sTo);
+      
+      let isDirectionCorrect = true;
+      if (sFrom && sTo && hasFrom && hasTo) {
+          if (fullPath.indexOf(sFrom) >= fullPath.indexOf(sTo)) isDirectionCorrect = false; 
       }
 
-      return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [buses, loading]);
+      if (view === 'ksrtc' && bus.type !== 'KSRTC') return false; 
+      if (view === 'private' && bus.type !== 'Private') return false;
+      
+      if (resultFilter === 'upcoming') {
+          const currentTime = new Date();
+          const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
+          let checkTime = bus.time;
+          if (searchFrom && bus.detailedStops) {
+              const stop = bus.detailedStops.find(s => s.name.toLowerCase() === searchFrom.toLowerCase());
+              if (stop && stop.time !== 'TBD') checkTime = stop.time;
+          }
+          if (getMinutesFromMidnight(checkTime) !== -1 && getMinutesFromMidnight(checkTime) < currentMinutes) return false;
+      }
 
-  // Filter Logic
-  const filteredBuses = buses.filter(bus => {
-    const sFrom = searchFrom.toLowerCase().trim();
-    const sTo = searchTo.toLowerCase().trim();
-    const stopsStr = (bus.stops || bus.route || "").toLowerCase();
-    const fullPath = `${(bus.from || "").toLowerCase()} ${stopsStr} ${(bus.to || "").toLowerCase()}`;
-    
-    // 1. Check if both keywords exist
-    const hasFrom = !sFrom || fullPath.includes(sFrom);
-    const hasTo = !sTo || fullPath.includes(sTo);
-    
-    // 2. Check Direction (From index < To index)
-    let isDirectionCorrect = true;
-    if (sFrom && sTo && hasFrom && hasTo) {
-        if (fullPath.indexOf(sFrom) >= fullPath.indexOf(sTo)) isDirectionCorrect = false; 
-    }
+      const matchesType = filterType === 'all' || (bus.type && bus.type.toLowerCase() === filterType.toLowerCase());
+      return hasFrom && hasTo && isDirectionCorrect && matchesType;
+    });
+  }, [buses, searchFrom, searchTo, view, resultFilter, filterType]);
 
-    if (view === 'ksrtc' && bus.type !== 'KSRTC') return false; 
-    if (view === 'private' && bus.type !== 'Private') return false;
-    
-    // Filter based on Time (Live/Upcoming)
-    if (resultFilter === 'upcoming') {
-        const currentTime = new Date();
-        const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
-        let checkTime = bus.time;
-        if (searchFrom && bus.detailedStops) {
-            const stop = bus.detailedStops.find(s => s.name.toLowerCase() === searchFrom.toLowerCase());
-            if (stop && stop.time !== 'TBD') checkTime = stop.time;
-        }
-        if (getMinutesFromMidnight(checkTime) !== -1 && getMinutesFromMidnight(checkTime) < currentMinutes) return false;
-    }
-
-    const matchesType = filterType === 'all' || (bus.type && bus.type.toLowerCase() === filterType.toLowerCase());
-    return hasFrom && hasTo && isDirectionCorrect && matchesType;
-  });
-
-  // --- DIGITAL BOARD LOGIC (FIXED: Deduplication) ---
-  const getBoardBuses = () => {
+  // --- DIGITAL BOARD LOGIC ---
+  const getBoardBuses = useMemo(() => {
     if (!boardStop) return [];
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    // 1. Map to raw upcoming buses
     const upcomingRaw = buses
         .filter(bus => {
             if (!bus.detailedStops) return false;
@@ -370,7 +462,6 @@ export default function App() {
             return { ...bus, boardTime: stop.time, boardMins: getMinutesFromMidnight(stop.time) };
         });
 
-    // 2. Remove Duplicates based on (Name + Route + Time)
     const seen = new Set();
     const uniqueBuses = [];
     for (const bus of upcomingRaw) {
@@ -381,20 +472,17 @@ export default function App() {
         }
     }
 
-    // 3. Sort by time and slice
     return uniqueBuses.sort((a, b) => a.boardMins - b.boardMins).slice(0, 10);
-  };
+  }, [buses, boardStop]);
 
   const openBoard = () => {
       if(boardStop) {
-          setView('board');
-          setShowBoardInput(false);
+          navigate(`/board/${encodeURIComponent(boardStop)}`);
       } else {
           showToast("Please select a stop first", "error");
       }
   };
 
-  // Calculate Level for mobile header
   let userLevel = "Newbie";
   if (userPoints >= 100) userLevel = "Explorer";
   if (userPoints >= 500) userLevel = "Guide";
@@ -422,7 +510,7 @@ export default function App() {
                             <button onClick={() => setBoardDarkMode(!boardDarkMode)} className={`p-2 rounded-lg transition-colors ${boardDarkMode ? 'bg-gray-800 text-yellow-400 hover:bg-gray-700' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-100'}`}>
                                 {boardDarkMode ? <Sun size={24} /> : <Moon size={24} />}
                             </button>
-                            <button onClick={() => setView('home')} className={`p-2 rounded-lg transition-colors ${boardDarkMode ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-100'}`}>
+                            <button onClick={() => navigate('/')} className={`p-2 rounded-lg transition-colors ${boardDarkMode ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-white text-gray-900 border border-gray-200 hover:bg-gray-100'}`}>
                                 <X size={24} />
                             </button>
                         </div>
@@ -440,7 +528,7 @@ export default function App() {
 
                 {/* Board Content */}
                 <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-                    {getBoardBuses().length > 0 ? getBoardBuses().map((bus, i) => (
+                    {getBoardBuses.length > 0 ? getBoardBuses.map((bus, i) => (
                         <div key={bus.id} className={`grid grid-cols-12 gap-4 border-l-4 p-4 items-center rounded-r-lg transition-all group ${
                             boardDarkMode 
                             ? 'bg-gray-900 border-teal-500 hover:bg-gray-800' 
@@ -468,7 +556,7 @@ export default function App() {
                 
                 {/* Board Footer */}
                 <div className={`mt-6 pt-4 border-t flex justify-between items-center text-xs uppercase tracking-wider ${boardDarkMode ? 'border-gray-900 text-gray-600' : 'border-gray-200 text-gray-400'}`}>
-                    <div>Powered by evidebus.in</div>
+                    <div>Powered by evidebus.com</div>
                     <div>Data relies on community contribution. Verify locally.</div>
                 </div>
              </div>
@@ -488,8 +576,8 @@ export default function App() {
 
         <ToastContainer toasts={toasts} />
         {/* Hide Nav on Board View */}
-        {view !== 'board' && <Navbar setView={setView} toggleMenu={() => setIsMenuOpen(!isMenuOpen)} />}
-        <MobileMenu isOpen={isMenuOpen} setView={setView} closeMenu={() => setIsMenuOpen(false)} />
+        {view !== 'board' && <Navbar setView={(v) => navigate(`/${v === 'home' ? '' : v}`)} toggleMenu={() => setIsMenuOpen(!isMenuOpen)} />}
+        <MobileMenu isOpen={isMenuOpen} setView={(v) => navigate(`/${v === 'home' ? '' : v}`)} closeMenu={() => setIsMenuOpen(false)} />
 
         {/* --- MAIN CONTENT (Hidden if Board View) --- */}
         <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 ${view === 'board' ? 'hidden' : ''}`}>
@@ -604,7 +692,9 @@ export default function App() {
                                     </div>
                                     
                                     {loading ? (
-                                        <div className="py-12 text-center text-gray-400 text-xs">Fetching live schedule...</div>
+                                        <div className="space-y-3">
+                                            {[1,2,3,4,5].map(i => <SkeletonCard key={i}/>)}
+                                        </div>
                                     ) : (
                                         <div className="space-y-3">
                                             {filteredBuses.length > 0 ? filteredBuses.map((bus, idx) => {
@@ -621,45 +711,75 @@ export default function App() {
                                                 const isKSRTC = bus.type === 'KSRTC' || bus.type === 'Swift';
 
                                                 return (
-                                                <div key={bus.id} onClick={() => handleBusClick(bus)} className={`bg-white p-4 rounded-xl border shadow-sm hover:shadow-md cursor-pointer group transition-all relative overflow-hidden ${isKSRTC ? 'border-l-4 border-l-red-600' : 'border-l-4 border-l-blue-600'}`}>
-                                                    <div className="flex gap-4 items-center">
-                                                        <div className={`flex flex-col items-center justify-center rounded-lg p-2 min-w-[60px] border ${isKSRTC ? 'bg-red-50 border-red-100 text-red-900' : 'bg-blue-50 border-blue-100 text-blue-900'}`}>
-                                                            <span className="text-lg font-bold leading-none">{displayTime.split(' ')[0]}</span>
-                                                            <span className="text-[10px] font-bold uppercase mt-1">{displayTime.split(' ')[1]}</span>
+                                                <div 
+                                                    key={bus.id} 
+                                                    onClick={() => handleBusClick(bus)} 
+                                                    className="relative bg-white rounded-2xl border border-teal-100 p-5 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden group"
+                                                >
+                                                    
+                                                    {/* WATERMARK BACKGROUND */}
+                                                    <div className="absolute top-1/2 -translate-y-1/2 right-[-20px] font-black text-8xl text-gray-100 italic pointer-events-none select-none z-0 tracking-tighter opacity-80">
+                                                        {isKSRTC ? 'KSRTC' : 'PRIVATE'}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-4 relative z-10">
+                                                        {/* TIME BOX */}
+                                                        <div className="bg-gray-50 rounded-xl p-3 min-w-[80px] text-center border border-gray-100">
+                                                            {/* INCREASED FONT SIZE */}
+                                                            <span className="block text-3xl font-bold text-gray-900 leading-none">{displayTime.split(' ')[0]}</span>
+                                                            <span className="block text-xs font-bold text-gray-400 uppercase mt-1">{displayTime.split(' ')[1]}</span>
                                                         </div>
-                                                        <div className="flex-1 min-w-0"> 
-                                                            <div className="flex justify-between items-start mb-1">
-                                                                <h4 className="font-bold text-sm text-gray-900 truncate pr-2">{bus.name}</h4>
-                                                                {bus.votes > 0 && (
-                                                                    <span className="flex items-center gap-1 text-[9px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-100 font-bold shrink-0">
-                                                                       <Star size={8} className="fill-green-600"/> {bus.votes}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <p className="text-xs text-gray-600 font-medium truncate mb-2">{bus.route}</p>
-                                                            <div className="flex flex-wrap items-center gap-2">
-                                                                {/* TYPE BADGE - SOLID ICON */}
-                                                                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] ${isKSRTC ? 'bg-red-600' : 'bg-blue-600'}`}>
-                                                                    <Bus size={12} />
+
+                                                        {/* DETAILS */}
+                                                        <div className="flex-1 min-w-0">
+                                                            {/* Header: Name + Rating */}
+                                                            <div className="flex justify-between items-start">
+                                                                <div>
+                                                                    {/* INCREASED FONT SIZE */}
+                                                                    <h4 className="font-bold text-xl text-teal-900 leading-tight">{bus.name}</h4>
+                                                                    {/* INCREASED FONT SIZE */}
+                                                                    <p className="text-sm font-bold text-gray-600 mt-0.5">{bus.route}</p>
                                                                 </div>
                                                                 
-                                                                <span className={`text-[9px] px-2 py-0.5 rounded border font-semibold ${isKSRTC ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                                                {/* Rating Badge */}
+                                                                {bus.votes > 0 && (
+                                                                    <div className="bg-green-50 text-green-700 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 border border-green-100 shadow-sm">
+                                                                        <Star size={10} className="fill-green-700" /> {bus.votes}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Tags Row */}
+                                                            <div className="flex flex-wrap items-center gap-2 mt-3">
+                                                                {/* Type Tag */}
+                                                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
+                                                                    isKSRTC ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'
+                                                                }`}>
                                                                     {bus.type}
                                                                 </span>
+
                                                                 {isIntermediate && (
-                                                                    <span className="text-[9px] text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded border border-teal-100">
+                                                                    <span className="bg-teal-50 text-teal-700 border border-teal-100 px-2.5 py-1 rounded-lg text-[10px] font-medium">
                                                                         Via {searchFrom}
                                                                     </span>
                                                                 )}
-                                                                <span className="text-[9px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
+
+                                                                {/* Crowd Tag */}
+                                                                <span className="bg-gray-50 text-gray-500 border border-gray-100 px-2.5 py-1 rounded-lg text-[10px] font-medium">
                                                                     Crowd: {bus.crowdLevel || "Low"}
                                                                 </span>
-                                                                <span className="text-[9px] text-gray-500 bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
+
+                                                                {/* Fare Tag */}
+                                                                <span className="bg-gray-50 text-gray-500 border border-gray-100 px-2.5 py-1 rounded-lg text-[10px] font-medium">
                                                                     Est. Fare: {estimatedFare ? `₹${estimatedFare}` : 'Check'}
                                                                 </span>
                                                             </div>
                                                         </div>
-                                                        <ChevronRight size={18} className="text-gray-300 group-hover:text-teal-600 shrink-0" />
+
+                                                        {/* ARROW */}
+                                                        <div className="text-gray-300 pl-2">
+                                                            <ChevronRight size={24} />
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 );}) : (
@@ -697,7 +817,7 @@ export default function App() {
                                                     value={boardStop}
                                                     onChange={(e) => {
                                                         setBoardStop(e.target.value);
-                                                        updateSuggestions(e.target.value, 'board'); // Use distinct 'board' type
+                                                        updateSuggestions(e.target.value, 'board'); 
                                                     }}
                                                 />
                                                 {/* Suggestions Specific to Board */}
@@ -714,17 +834,26 @@ export default function App() {
                                             </div>
                                         )}
 
-                                        <button onClick={() => setView('add-bus')} className="w-full flex items-center gap-2 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50 hover:pl-2 rounded transition-all border-b border-gray-50 last:border-0 text-left">
+                                        <button onClick={() => navigate('/add-bus')} className="w-full flex items-center gap-2 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50 hover:pl-2 rounded transition-all border-b border-gray-50 last:border-0 text-left">
                                             <PlusCircle size={14} /> Add Missing Bus
                                         </button>
 
+                                        <button onClick={() => navigate('/depot')} className="w-full flex items-center gap-2 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50 hover:pl-2 rounded transition-all border-b border-gray-50 last:border-0 text-left">
+                                            <Phone size={14} /> Depot Enquiry Numbers
+                                        </button>
+
+                                        <button onClick={() => navigate('/stands')} className="w-full flex items-center gap-2 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50 hover:pl-2 rounded transition-all border-b border-gray-50 last:border-0 text-left">
+                                            <MapPin size={14} /> Bus Stand List
+                                        </button>
+
                                         {[
-                                            { t: "Official KSRTC Booking", l: "https://www.keralartc.com/" },
+                                            { t: "Official KSRTC Booking", l: "https://online.keralartc.com" },
                                             { t: "Student Concession", l: "https://concessionksrtc.com/school-register" },
+                                            { t: "Sabarimala Bus Pass", l: "https://sabarimala.onlineksrtcswift.com/" },
                                             { t: "Check Fare Rates (MVD)", l: "https://mvd.kerala.gov.in" },
                                             { t: "Live Traffic Status", l: "https://google.com/maps" }
                                         ].map((item, i) => (
-                                            <a key={i} href={item.l} target="_blank" className="flex items-center gap-2 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-teal-700 hover:pl-2 rounded transition-all border-b border-gray-50 last:border-0">
+                                            <a key={i} href={item.l} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-teal-700 hover:pl-2 rounded transition-all border-b border-gray-50 last:border-0">
                                                 <ChevronRight size={12} className="text-gray-300" /> {item.t}
                                             </a>
                                         ))}
@@ -737,12 +866,20 @@ export default function App() {
                     )}
 
                     {view === 'add-bus' && (
-                        <AddBusForm onCancel={() => setView('home')} onAdd={addNewBus} showToast={showToast} />
+                        <AddBusForm onCancel={() => navigate('/')} onAdd={addNewBus} showToast={showToast} />
+                    )}
+
+                    {view === 'depot' && (
+                        <DepotEnquiry />
+                    )}
+
+                    {view === 'bus-stands' && (
+                        <BusStandList onBack={() => navigate('/')} />
                     )}
 
                     {/* FOOTER PAGES */}
                     {['about', 'contact', 'privacy', 'terms', 'disclaimer'].includes(view) && (
-                        <FooterPage type={view} onBack={() => setView('home')} />
+                        <FooterPage type={view} onBack={() => navigate('/')} />
                     )}
 
                     {/* RESULTS VIEW */}
@@ -754,19 +891,21 @@ export default function App() {
                                         <Search size={16} className="text-teal-600"/> 
                                         {searchFrom ? `Results: ${searchFrom}` : "All"} {searchTo && `to ${searchTo}`}
                                     </h3>
-                                    <button onClick={() => {window.location.hash = ''; setView('home');}} className="text-[10px] text-gray-400 hover:text-teal-600 underline mt-1">
+                                    <button onClick={() => navigate('/')} className="text-[10px] text-gray-400 hover:text-teal-600 underline mt-1">
                                         Back to Search
                                     </button>
                                 </div>
                                 
                                 <div className="flex bg-gray-100 p-1 rounded-md">
-                                    <button onClick={() => setResultFilter('all')} className={`px-2 py-1 text-[10px] font-bold rounded transition-all ${resultFilter === 'all' ? 'bg-white shadow text-teal-800' : 'text-gray-500'}`}>All</button>
-                                    <button onClick={() => setResultFilter('upcoming')} className={`px-2 py-1 text-[10px] font-bold rounded transition-all ${resultFilter === 'upcoming' ? 'bg-white shadow text-teal-800' : 'text-gray-500'}`}>Upcoming</button>
+                                    <button onClick={() => setResultFilter('all')} className={`px-2 py-1 text-[10px] font-bold rounded transition-all ${resultFilter === 'all' ? 'bg-white shadow text-teal-800' : 'text-gray-400'}`}>All</button>
+                                    <button onClick={() => setResultFilter('upcoming')} className={`px-2 py-1 text-[10px] font-bold rounded transition-all ${resultFilter === 'upcoming' ? 'bg-white shadow text-teal-800' : 'text-gray-400'}`}>Upcoming</button>
                                 </div>
                             </div>
 
                             {loading ? (
-                                <div className="py-12 text-center text-gray-400 text-xs">Loading data...</div>
+                                <div className="space-y-3">
+                                    {[1,2,3,4,5].map(i => <SkeletonCard key={i}/>)}
+                                </div>
                             ) : (
                                 <div className="space-y-3">
                                     {filteredBuses.length > 0 ? filteredBuses.map((bus, idx) => {
@@ -783,49 +922,75 @@ export default function App() {
                                         const isKSRTC = bus.type === 'KSRTC' || bus.type === 'Swift';
 
                                         return (
-                                        <div key={bus.id} onClick={() => handleBusClick(bus)} className={`bg-white p-4 rounded-xl border shadow-sm hover:shadow-md cursor-pointer group transition-all relative overflow-hidden ${isKSRTC ? 'border-l-4 border-l-red-600' : 'border-l-4 border-l-blue-600'}`}>
-                                            <div className="flex gap-4 items-center">
-                                                <div className={`flex flex-col items-center justify-center rounded-lg p-2 min-w-[60px] border ${isKSRTC ? 'bg-red-50 border-red-100 text-red-900' : 'bg-blue-50 border-blue-100 text-blue-900'}`}>
-                                                    <span className="text-lg font-bold leading-none">{displayTime.split(' ')[0]}</span>
-                                                    <span className="text-[10px] font-bold uppercase mt-1">{displayTime.split(' ')[1]}</span>
+                                        <div key={bus.id} onClick={() => handleBusClick(bus)} className="relative bg-white rounded-2xl border border-teal-100 p-5 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden group">
+                                            
+                                            {/* WATERMARK BACKGROUND */}
+                                            <div className="absolute top-1/2 -translate-y-1/2 right-[-20px] font-black text-8xl text-gray-100 italic pointer-events-none select-none z-0 tracking-tighter opacity-80">
+                                                {isKSRTC ? 'KSRTC' : 'PRIVATE'}
+                                            </div>
+
+                                            <div className="flex items-center gap-4 relative z-10">
+                                                {/* TIME BOX */}
+                                                <div className="bg-gray-50 rounded-xl p-3 min-w-[80px] text-center border border-gray-100">
+                                                    {/* INCREASED FONT SIZE */}
+                                                    <span className="block text-3xl font-bold text-gray-900 leading-none">{displayTime.split(' ')[0]}</span>
+                                                    <span className="block text-xs font-bold text-gray-400 uppercase mt-1">{displayTime.split(' ')[1]}</span>
                                                 </div>
+
+                                                {/* DETAILS */}
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="flex justify-between items-start mb-1">
-                                                        <h4 className="font-bold text-sm text-gray-900 truncate pr-2">{bus.name}</h4>
-                                                        {bus.votes > 0 && (
-                                                            <span className="flex items-center gap-1 text-[9px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded border border-green-100 font-bold shrink-0">
-                                                                <Star size={8} className="fill-green-600"/> {bus.votes}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <p className="text-xs text-gray-600 font-medium truncate mb-2">{bus.route}</p>
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        {/* TYPE BADGE - SOLID ICON */}
-                                                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] ${isKSRTC ? 'bg-red-600' : 'bg-blue-600'}`}>
-                                                            <Bus size={12} />
+                                                    {/* Header: Name + Rating */}
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            {/* INCREASED FONT SIZE */}
+                                                            <h4 className="font-bold text-xl text-teal-900 leading-tight">{bus.name}</h4>
+                                                            {/* INCREASED FONT SIZE */}
+                                                            <p className="text-sm font-bold text-gray-600 mt-0.5">{bus.route}</p>
                                                         </div>
                                                         
-                                                        <span className={`text-[9px] px-2 py-0.5 rounded border font-semibold ${isKSRTC ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                                                        {/* Rating Badge */}
+                                                        {bus.votes > 0 && (
+                                                            <div className="bg-green-50 text-green-700 px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 border border-green-100 shadow-sm">
+                                                                <Star size={10} className="fill-green-700" /> {bus.votes}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Tags Row */}
+                                                    <div className="flex flex-wrap items-center gap-2 mt-3">
+                                                        {/* Type Tag */}
+                                                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
+                                                            isKSRTC ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'
+                                                        }`}>
                                                             {bus.type}
                                                         </span>
+
                                                         {isIntermediate && (
-                                                            <span className="text-[9px] text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded border border-teal-100">
+                                                            <span className="bg-teal-50 text-teal-700 border border-teal-100 px-2.5 py-1 rounded-lg text-[10px] font-medium">
                                                                 Via {searchFrom}
                                                             </span>
                                                         )}
-                                                        <span className="text-[9px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
+
+                                                        {/* Crowd Tag */}
+                                                        <span className="bg-gray-50 text-gray-500 border border-gray-100 px-2.5 py-1 rounded-lg text-[10px] font-medium">
                                                             Crowd: {bus.crowdLevel || "Low"}
                                                         </span>
-                                                        <span className="text-[9px] text-gray-500 bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
+
+                                                        {/* Fare Tag */}
+                                                        <span className="bg-gray-50 text-gray-500 border border-gray-100 px-2.5 py-1 rounded-lg text-[10px] font-medium">
                                                             Est. Fare: {estimatedFare ? `₹${estimatedFare}` : 'Check'}
                                                         </span>
                                                     </div>
                                                 </div>
-                                                <ChevronRight size={18} className="text-gray-300 group-hover:text-teal-600 shrink-0" />
+
+                                                {/* ARROW */}
+                                                <div className="text-gray-300 pl-2">
+                                                    <ChevronRight size={24} />
+                                                </div>
                                             </div>
                                         </div>
                                         );}) : (
-                                        <div className="text-center py-8 bg-white rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs">
+                                        <div className="text-center py-10 bg-white rounded-xl border border-dashed border-gray-200 text-gray-400 text-xs">
                                             No buses found matching your search.
                                             {buses.length === 0 && (
                                                 <div className="mt-3">
@@ -846,7 +1011,14 @@ export default function App() {
                         <div ref={resultsRef}>
                             <BusPost 
                                 bus={selectedBus} 
-                                onBack={() => {window.location.hash = ''; setView('results');}} 
+                                onBack={() => {
+                                    if (searchFrom) {
+                                        const toParam = searchTo.trim() || '-';
+                                        navigate(`/search/${encodeURIComponent(searchFrom)}/${encodeURIComponent(toParam)}/${filterType}`);
+                                    } else {
+                                        navigate('/');
+                                    }
+                                }} 
                                 addComment={addComment} 
                                 updateBusDetails={updateBusDetails} 
                                 onVote={handleVote}
@@ -862,11 +1034,11 @@ export default function App() {
 
                 {/* --- RIGHT COLUMN --- */}
                 <div className="hidden lg:block lg:col-span-4">
-                    <Sidebar setView={setView} onSeed={seedDatabase} favorites={favorites} onSelectFavorite={handleSelectFavorite} points={userPoints} />
+                    <Sidebar setView={(v) => navigate(`/${v}`)} onSeed={seedDatabase} favorites={favorites} onSelectFavorite={handleSelectFavorite} points={userPoints} />
                 </div>
             </div>
             
-            {view !== 'board' && <Footer setView={setView} onQuickSearch={handleQuickSearch} />}
+            {view !== 'board' && <Footer setView={(v) => navigate(`/${v}`)} onQuickSearch={handleQuickSearch} />}
         </div>
     </div>
   );

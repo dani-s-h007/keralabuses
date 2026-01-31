@@ -1,17 +1,45 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   PlusCircle, Edit3, Clock, Trash2, Save, X, Maximize2, 
   MessageCircle, AlertTriangle, MessageSquare, ThumbsUp, 
   BarChart3, Map, Monitor, Info, ChevronRight, Star, Share2, 
-  ArrowUpCircle, ArrowDownCircle, PlusSquare, MapPin
+  ArrowUpCircle, ArrowDownCircle, PlusSquare, Phone, CheckSquare, Square
 } from 'lucide-react';
-import { formatTime } from '../utils';
+import { formatTime, DEPOT_DATA } from '../utils';
+
+// --- SKELETON: BUS DETAIL ---
+export const BusDetailSkeleton = () => (
+  <div className="animate-pulse space-y-6">
+    <div className="h-8 bg-gray-100 rounded w-3/4"></div>
+    <div className="h-32 bg-gray-100 rounded-xl"></div>
+    <div className="h-20 bg-gray-100 rounded-xl"></div>
+    <div className="space-y-3">
+        {[1,2,3].map(i => <div key={i} className="h-12 bg-gray-100 rounded-lg"></div>)}
+    </div>
+  </div>
+);
+
+// --- HELPER: GENERATE DEFAULT SCHEDULE IF MISSING ---
+const generateDefaultStops = (bus) => {
+    const from = bus.from || "Origin";
+    const to = bus.to || "Destination";
+    const startTime = bus.time || "00:00 AM";
+    const endTime = bus.endTime || "00:00 AM"; 
+
+    return [
+        { name: from, time: startTime },
+        { name: to, time: endTime }
+    ];
+};
 
 // 6. ADD BUS FORM
 export const AddBusForm = ({ onCancel, onAdd, showToast }) => {
     const [formData, setFormData] = useState({
         name: '', type: 'Private', from: '', to: '', time: '', stops: '', description: '', endTime: '', distance: ''
     });
+    // Real Origin Toggle
+    const [isRealRoute, setIsRealRoute] = useState(true);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -19,20 +47,36 @@ export const AddBusForm = ({ onCancel, onAdd, showToast }) => {
             showToast("Please fill all required fields", "info");
             return;
         }
+        
         const route = `${formData.from} - ${formData.to}`;
         const displayTime = formatTime(formData.time);
-        const destTime = formData.endTime ? formatTime(formData.endTime) : 'TBD';
+        const destTime = formData.endTime ? formatTime(formData.endTime) : '00:00 AM';
         
         const stopNames = formData.stops.split(',').map(s => s.trim()).filter(s => s);
-        
         const intermediateStops = stopNames.map(name => ({ name, time: 'TBD' }));
-        const initialStops = [
-            { name: formData.from, time: displayTime },
-            ...intermediateStops,
-            { name: formData.to, time: destTime }
-        ];
+        
+        let initialStops = [];
 
-        onAdd({ ...formData, time: displayTime, route, votes: 0, comments: [], detailedStops: initialStops, status: 'On Time', crowd: 'Low' });
+        if (isRealRoute) {
+            initialStops = [
+                { name: formData.from, time: displayTime }, 
+                ...intermediateStops,                       
+                { name: formData.to, time: destTime }       
+            ];
+        } else {
+            initialStops = [...intermediateStops];
+        }
+
+        onAdd({ 
+            ...formData, 
+            time: displayTime, 
+            route, 
+            votes: 0, 
+            comments: [], 
+            detailedStops: initialStops, 
+            status: 'On Time', 
+            crowd: 'Low' 
+        });
     };
 
     return (
@@ -82,6 +126,25 @@ export const AddBusForm = ({ onCancel, onAdd, showToast }) => {
                     <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1.5">Intermediate Stops</label>
                     <textarea className="w-full p-2.5 border border-gray-200 rounded-lg text-xs focus:border-teal-500 outline-none h-20 resize-none" placeholder="e.g. Stop A, Stop B, Stop C" onChange={e => setFormData({...formData, stops: e.target.value})}></textarea>
                 </div>
+
+                {/* --- REAL ORIGIN CHECKBOX --- */}
+                <div 
+                    className="flex items-center gap-3 p-3 bg-teal-50 border border-teal-100 rounded-lg cursor-pointer hover:bg-teal-100 transition-colors"
+                    onClick={() => setIsRealRoute(!isRealRoute)}
+                >
+                    <div className={`text-teal-600 transition-all ${isRealRoute ? 'scale-110' : 'opacity-50'}`}>
+                        {isRealRoute ? <CheckSquare size={20} /> : <Square size={20} />}
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-teal-900">Is this the real Origin & Destination?</p>
+                        <p className="text-[9px] text-teal-700 leading-tight mt-0.5">
+                            {isRealRoute 
+                                ? "Yes: 'From' & 'To' will be added to the schedule automatically." 
+                                : "No: Only intermediate stops will be listed initially."}
+                        </p>
+                    </div>
+                </div>
+
                 <div className="flex gap-3 pt-2">
                     <button type="button" onClick={onCancel} className="px-5 py-2.5 bg-gray-100 text-gray-600 rounded-lg font-bold text-xs hover:bg-gray-200 transition-colors">Cancel</button>
                     <button type="submit" className="flex-1 px-5 py-2.5 bg-teal-600 text-white rounded-lg font-bold text-xs hover:bg-teal-700 shadow-sm hover:shadow-md transition-all">Submit Bus</button>
@@ -93,11 +156,21 @@ export const AddBusForm = ({ onCancel, onAdd, showToast }) => {
 
 // 7. BUS POST COMPONENT
 export const BusPost = ({ bus, onBack, addComment, updateBusDetails, onVote, reportLate, updateCrowd, toggleFavorite, isFavorite, showToast }) => {
+  const navigate = useNavigate();
+
+  // If bus is null (loading), show skeleton
+  if (!bus) return <BusDetailSkeleton />;
+
   const [newComment, setNewComment] = useState("");
   const [userName, setUserName] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [showFullMap, setShowFullMap] = useState(false);
   
+  // --- SELF-HEALING DATA LOGIC ---
+  const displayStops = (bus.detailedStops && bus.detailedStops.length > 0) 
+      ? bus.detailedStops 
+      : generateDefaultStops(bus);
+
   // Edit States
   const [editName, setEditName] = useState(bus.name);
   const [editRoute, setEditRoute] = useState(bus.route);
@@ -109,17 +182,32 @@ export const BusPost = ({ bus, onBack, addComment, updateBusDetails, onVote, rep
   const [newStopName, setNewStopName] = useState("");
   const [newStopTime, setNewStopTime] = useState("");
 
-  // Helper to sync route name based on stops
+  // Find Depot Logic
+  const findDepot = (location) => {
+      if(!location) return null;
+      const loc = location.toLowerCase();
+      for(const district of DEPOT_DATA) {
+          for(const depot of district.depots) {
+              if(loc.includes(depot.name.toLowerCase()) || depot.name.toLowerCase().includes(loc)) {
+                  return depot;
+              }
+          }
+      }
+      return null;
+  };
+
+  const isKSRTC = bus.type === 'KSRTC' || bus.type === 'Swift';
+  const originDepot = isKSRTC ? findDepot(bus.from) : null;
+  const destDepot = isKSRTC ? findDepot(bus.to) : null;
+
   const updateRouteNameFromStops = (stops) => {
       if (stops && stops.length > 0) {
           const start = stops[0].name;
           const end = stops[stops.length - 1].name;
-          // Only update editRoute state so it saves when user clicks Save
           setEditRoute(`${start} - ${end}`); 
       }
   };
 
-  // WhatsApp Share Logic (Clean Text)
   const handleShare = () => {
     const url = window.location.href;
     const text = `*${bus.name}* (${bus.type})
@@ -146,29 +234,33 @@ ${url}`;
 
   const handleSaveDetails = () => {
       const displayTime = editTime.includes(":") && !editTime.includes("M") ? formatTime(editTime) : editTime;
-      
+      const stopsToSave = (bus.detailedStops && bus.detailedStops.length > 0) ? bus.detailedStops : displayStops;
+
       updateBusDetails(bus.id, {
           name: editName,
           route: editRoute,
           time: displayTime,
           type: editType,
           description: editDesc,
+          detailedStops: stopsToSave
       });
       setIsEditing(false);
   };
 
   const handleAddStop = (position) => {
       if(!newStopName) return;
-      const displayTime = newStopTime ? formatTime(newStopTime) : "TBD";
-      let updatedStops = bus.detailedStops ? [...bus.detailedStops] : [];
+      const displayTime = newStopTime ? formatTime(newStopTime) : "TBD"; 
+      
+      let updatedStops = [...displayStops];
       const newStop = { name: newStopName, time: displayTime };
 
       if (position === 'start') {
           updatedStops.unshift(newStop);
+          if (!newStopTime) updatedStops[0].time = bus.time; 
       } else if (position === 'end') {
           updatedStops.push(newStop);
+          if (!newStopTime) updatedStops[updatedStops.length-1].time = "00:00 AM";
       } else {
-          // Add as intermediate (before the last stop if exists)
           if(updatedStops.length > 1) {
               updatedStops.splice(updatedStops.length - 1, 0, newStop);
           } else {
@@ -178,7 +270,6 @@ ${url}`;
 
       const stopsString = updatedStops.map(s => s.name).join(', ');
       
-      // If start/end changed, we should update route name too
       let newRouteName = bus.route;
       if (updatedStops.length > 0) {
           newRouteName = `${updatedStops[0].name} - ${updatedStops[updatedStops.length - 1].name}`;
@@ -187,14 +278,14 @@ ${url}`;
       updateBusDetails(bus.id, {
           detailedStops: updatedStops,
           stops: stopsString,
-          route: newRouteName // Auto-update route name even in view mode add
+          route: newRouteName
       });
       setNewStopName("");
       setNewStopTime("");
   };
 
   const handleEditStop = (index, field, value) => {
-      const updatedStops = [...(bus.detailedStops || [])];
+      const updatedStops = [...displayStops];
       let finalValue = value;
       if (field === 'time' && value.includes(':') && !value.includes('M') && !value.includes('T')) {
            finalValue = formatTime(value);
@@ -203,7 +294,6 @@ ${url}`;
       
       const stopsString = updatedStops.map(s => s.name).join(', ');
       
-      // Sync Route Name in Editing State
       if (field === 'name' && (index === 0 || index === updatedStops.length - 1)) {
           updateRouteNameFromStops(updatedStops);
       }
@@ -215,11 +305,10 @@ ${url}`;
   };
 
   const handleDeleteStop = (index) => {
-      const updatedStops = [...(bus.detailedStops || [])];
+      const updatedStops = [...displayStops];
       updatedStops.splice(index, 1);
       const stopsString = updatedStops.map(s => s.name).join(', ');
       
-      // Update route name in editing state
       updateRouteNameFromStops(updatedStops);
 
       updateBusDetails(bus.id, {
@@ -249,9 +338,9 @@ ${url}`;
                         <span className="font-bold text-gray-600 uppercase text-xs tracking-wider">Stop Name</span>
                         <span className="font-bold text-gray-600 uppercase text-xs tracking-wider text-right">Time</span>
                     </div>
-                    {bus.detailedStops && bus.detailedStops.map((stop, i) => {
+                    {displayStops.map((stop, i) => {
                         const isStart = i === 0;
-                        const isEnd = i === bus.detailedStops.length - 1;
+                        const isEnd = i === displayStops.length - 1;
                         return (
                         <div key={i} className="grid grid-cols-2 p-4 border-b border-gray-50 last:border-0 hover:bg-teal-50/50 transition-colors items-center group">
                             <div className="flex items-center gap-3 overflow-hidden">
@@ -331,9 +420,9 @@ ${url}`;
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                         <label className="text-[10px] font-bold text-gray-500 uppercase block mb-3">Stops & Route Order</label>
                         <div className="mb-3 space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
-                            {bus.detailedStops && bus.detailedStops.map((stop, i) => {
+                            {displayStops.map((stop, i) => {
                                 const isStart = i === 0;
-                                const isEnd = i === bus.detailedStops.length - 1;
+                                const isEnd = i === displayStops.length - 1;
                                 return (
                                 <div key={i} className={`flex gap-2 items-center bg-white p-2 border rounded-md shadow-sm ${isStart ? 'border-teal-300 bg-teal-50/30' : isEnd ? 'border-indigo-300 bg-indigo-50/30' : 'border-gray-200'}`}>
                                     <div className="min-w-[20px] flex justify-center">
@@ -387,44 +476,47 @@ ${url}`;
                     </div>
                 </div>
             ) : (
-                /* VIEW MODE */
+                /* VIEW MODE - INCREASED FONTS */
                 <>
                     <div className="flex flex-col md:flex-row justify-between items-start mb-5 gap-3">
                         <div className="w-full">
-                            <h1 className="text-xl md:text-2xl font-extrabold text-gray-900 leading-tight mb-1 truncate">{bus.name || "Bus Service"}</h1>
+                            {/* INCREASED FONT SIZE: Bus Name */}
+                            <h1 className="text-3xl md:text-4xl font-extrabold text-gray-900 leading-tight mb-2 truncate">{bus.name || "Bus Service"}</h1>
                             <div className="flex items-center flex-wrap gap-2">
-                                <span className="text-sm text-gray-600 font-medium truncate max-w-[200px]">{bus.route}</span>
-                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${bus.type === 'KSRTC' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
+                                {/* INCREASED FONT SIZE: Route */}
+                                <span className="text-lg md:text-xl text-gray-700 font-bold truncate max-w-full">{bus.route}</span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${bus.type === 'KSRTC' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
                                     {bus.type}
                                 </span>
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-gradient-to-br from-teal-50 to-emerald-50 rounded-xl p-4 border border-teal-100 flex flex-col sm:flex-row gap-4 mb-6 shadow-sm">
+                    <div className="bg-gradient-to-br from-teal-50 to-emerald-50 rounded-xl p-5 border border-teal-100 flex flex-col sm:flex-row gap-6 mb-6 shadow-sm">
                         <div className="flex-1">
-                            <div className="flex items-center gap-3">
-                                <Clock size={24} className="text-teal-600 shrink-0" />
+                            <div className="flex items-center gap-4">
+                                <Clock size={32} className="text-teal-600 shrink-0" />
                                 <div>
-                                    <span className="text-2xl font-black tracking-tight text-gray-800 leading-none">{bus.time}</span>
-                                    <p className="text-[10px] text-teal-700 font-medium mt-0.5">Scheduled Departure</p>
+                                    {/* INCREASED FONT SIZE: Time */}
+                                    <span className="text-4xl md:text-5xl font-black tracking-tight text-gray-900 leading-none">{bus.time}</span>
+                                    <p className="text-xs text-teal-800 font-bold mt-1 uppercase tracking-wide">Scheduled Departure</p>
                                 </div>
                             </div>
                         </div>
                         
                         <div className="flex gap-2">
-                            <button onClick={() => onVote(bus.id)} className="flex-1 sm:flex-none flex flex-col items-center justify-center gap-1 bg-white px-4 py-2 rounded-lg border border-teal-100 text-teal-700 hover:bg-teal-600 hover:text-white hover:border-teal-600 transition-all shadow-sm group min-w-[70px]">
-                                <ThumbsUp size={16} className={`mb-0.5 transition-transform group-hover:scale-110 ${bus.votes > 0 ? "fill-teal-100 group-hover:fill-white/20" : ""}`} />
-                                <span className="text-[10px] font-bold">{bus.votes || 0} Votes</span>
+                            <button onClick={() => onVote(bus.id)} className="flex-1 sm:flex-none flex flex-col items-center justify-center gap-1 bg-white px-5 py-3 rounded-xl border border-teal-100 text-teal-700 hover:bg-teal-600 hover:text-white hover:border-teal-600 transition-all shadow-sm group min-w-[80px]">
+                                <ThumbsUp size={20} className={`mb-0.5 transition-transform group-hover:scale-110 ${bus.votes > 0 ? "fill-teal-100 group-hover:fill-white/20" : ""}`} />
+                                <span className="text-xs font-bold">{bus.votes || 0} Votes</span>
                             </button>
                             
                              {/* Crowd */}
-                             <div className="flex-1 sm:flex-none bg-white p-2 rounded-lg border border-teal-100 shadow-sm flex flex-col justify-center">
-                                <div className="text-[9px] font-bold text-gray-400 uppercase mb-1.5 flex items-center justify-center gap-1"><BarChart3 size={10}/> Crowd</div>
-                                <div className="flex gap-1 justify-center">
-                                    <button onClick={() => updateCrowd(bus.id, "Low")} className={`w-8 py-1 rounded text-[10px] font-bold transition-colors ${bus.crowdLevel === 'Low' ? 'bg-green-500 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>L</button>
-                                    <button onClick={() => updateCrowd(bus.id, "Medium")} className={`w-8 py-1 rounded text-[10px] font-bold transition-colors ${bus.crowdLevel === 'Medium' ? 'bg-yellow-500 text-white' : 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'}`}>M</button>
-                                    <button onClick={() => updateCrowd(bus.id, "High")} className={`w-8 py-1 rounded text-[10px] font-bold transition-colors ${bus.crowdLevel === 'High' ? 'bg-red-500 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}>H</button>
+                             <div className="flex-1 sm:flex-none bg-white p-3 rounded-xl border border-teal-100 shadow-sm flex flex-col justify-center">
+                                <div className="text-[10px] font-bold text-gray-400 uppercase mb-2 flex items-center justify-center gap-1"><BarChart3 size={12}/> Crowd</div>
+                                <div className="flex gap-1.5 justify-center">
+                                    <button onClick={() => updateCrowd(bus.id, "Low")} className={`w-9 py-1.5 rounded-lg text-xs font-bold transition-colors ${bus.crowdLevel === 'Low' ? 'bg-green-500 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>L</button>
+                                    <button onClick={() => updateCrowd(bus.id, "Medium")} className={`w-9 py-1.5 rounded-lg text-xs font-bold transition-colors ${bus.crowdLevel === 'Medium' ? 'bg-yellow-500 text-white' : 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100'}`}>M</button>
+                                    <button onClick={() => updateCrowd(bus.id, "High")} className={`w-9 py-1.5 rounded-lg text-xs font-bold transition-colors ${bus.crowdLevel === 'High' ? 'bg-red-500 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}>H</button>
                                 </div>
                              </div>
                         </div>
@@ -441,53 +533,35 @@ ${url}`;
                         </div>
                     )}
 
-                    {/* Real-time Banner */}
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-3 rounded-xl mb-6 shadow-md flex items-center justify-between">
-                        <div>
-                            <h4 className="font-bold text-sm flex items-center gap-2"><Map size={16}/> Live Tracking</h4>
-                            <p className="text-[10px] opacity-90">Track at major stations.</p>
-                        </div>
-                        <div className="bg-white/20 p-1.5 rounded-lg">
-                            <Monitor size={18} />
-                        </div>
-                    </div>
-
-                    {/* OVERVIEW */}
-                    <div className="bg-white p-4 rounded-xl border border-gray-100 mb-6 text-xs text-gray-600 leading-relaxed shadow-sm">
-                        <h4 className="font-bold text-gray-900 mb-2 flex items-center gap-1.5 text-xs uppercase tracking-wide"><Info size={14} className="text-blue-500"/> Overview</h4>
-                        <p>
-                            This <strong>{bus.type}</strong> bus service, known as <em>{bus.name}</em>, departs at <strong>{bus.time}</strong>. 
-                            It operates on the <strong>{bus.route}</strong> route. 
-                            {bus.stops ? `Major stops include ${bus.stops}. ` : ''} 
-                            Passengers looking for reliable travel between these destinations can choose this service for a comfortable journey.
-                        </p>
-                        {bus.description && <p className="mt-3 text-[10px] text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 italic">Operator Note: {bus.description}</p>}
-                    </div>
-
-                    {/* TIMELINE (With Inline Add) */}
+                    {/* TIMELINE (With Inline Add) - INCREASED FONTS & MOVED UP */}
                     <div className="mb-6">
                         <div className="flex justify-between items-center mb-4">
                             <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2"><Map size={14} className="text-gray-400"/> Schedule</h4>
-                            {bus.detailedStops && bus.detailedStops.length > 0 && (
+                            {displayStops.length > 0 && (
                                 <button onClick={() => setShowFullMap(true)} className="text-teal-600 font-bold text-[10px] flex items-center gap-1 hover:bg-teal-50 px-2 py-1 rounded transition-colors">
                                     <Maximize2 size={12}/> Full Map
                                 </button>
                             )}
                         </div>
                         <div className="relative border-l-2 border-teal-100 ml-3 space-y-6 pb-2">
-                            {bus.detailedStops && bus.detailedStops.map((stop, i) => {
+                            {displayStops.map((stop, i) => {
                                 const isStart = i === 0;
-                                const isEnd = i === bus.detailedStops.length - 1;
+                                const isEnd = i === displayStops.length - 1;
                                 return (
                                 <div key={i} className="ml-6 relative group">
                                     <span className={`absolute -left-[31px] top-1.5 w-3 h-3 rounded-full border-[3px] shadow-sm group-hover:scale-110 transition-transform ${isStart ? 'bg-teal-500 border-teal-200' : isEnd ? 'bg-indigo-500 border-indigo-200' : 'bg-white border-teal-500'}`}></span>
-                                    <div className="flex justify-between items-start p-2 -mt-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                    <div 
+                                        className="flex justify-between items-start p-3 -mt-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                                        onClick={() => navigate(`/board/${encodeURIComponent(stop.name)}`)}
+                                    >
                                         <div className="flex flex-col">
-                                            <span className="text-sm font-bold text-gray-800 truncate pr-2">{stop.name}</span>
-                                            {isStart && <span className="text-[9px] font-black text-teal-600 uppercase tracking-wide">ORIGIN</span>}
-                                            {isEnd && <span className="text-[9px] font-black text-indigo-600 uppercase tracking-wide">DESTINATION</span>}
+                                            {/* INCREASED FONT SIZE: Stop Name */}
+                                            <span className="text-lg font-bold text-gray-900 truncate pr-2 hover:text-teal-700 transition-colors">{stop.name}</span>
+                                            {isStart && <span className="text-xs font-black text-teal-600 uppercase tracking-wide mt-0.5">ORIGIN</span>}
+                                            {isEnd && <span className="text-xs font-black text-indigo-600 uppercase tracking-wide mt-0.5">DESTINATION</span>}
                                         </div>
-                                        <span className="text-[10px] font-mono font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-100 whitespace-nowrap">{stop.time}</span>
+                                        {/* INCREASED FONT SIZE: Stop Time */}
+                                        <span className="text-sm font-mono font-bold text-teal-800 bg-teal-50 px-3 py-1 rounded border border-teal-100 whitespace-nowrap">{stop.time}</span>
                                     </div>
                                 </div>
                             )})}
@@ -518,13 +592,63 @@ ${url}`;
                                         <button onClick={() => handleAddStop('intermediate')} title="Add Stop" className="flex-1 bg-teal-600 text-white py-1.5 rounded-md text-[10px] font-bold hover:bg-teal-700 flex items-center justify-center gap-1 shadow-sm transition-colors">
                                             <PlusSquare size={12}/> Add
                                         </button>
-                                        <button onClick={() => handleAddStop('end')} title="Set as Destination" className="flex-1 bg-white border border-gray-200 text-indigo-600 py-1.5 rounded-md text-[10px] font-bold hover:bg-indigo-50 hover:border-indigo-200 flex items-center justify-center gap-1 transition-colors">
+                                        <button onClick={() => handleAddStop('end')} title="Set as Destination" className="flex-1 bg-white border border-gray-200 text-indigo-600 py-1.5 rounded-md text-[10px] font-bold hover:bg-indigo-200 flex items-center justify-center gap-1 border border-indigo-200 transition-colors">
                                             <ArrowDownCircle size={12}/> End
                                         </button>
                                     </div>
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    {/* KSRTC DEPOT HELP INFO */}
+                    {(originDepot || destDepot) && (
+                        <div className="mb-6 bg-blue-50 border border-blue-100 p-4 rounded-xl">
+                            <h4 className="font-bold text-blue-900 text-xs uppercase mb-3 flex items-center gap-2">
+                                <Phone size={14}/> KSRTC Depot Enquiry
+                            </h4>
+                            <div className="flex flex-col gap-3">
+                                {originDepot && (
+                                    <div className="flex justify-between items-center text-xs">
+                                        <span className="text-gray-600 font-medium">Start: <span className="font-bold text-gray-800">{originDepot.name}</span></span>
+                                        <a href={`tel:${originDepot.phone}`} className="flex items-center gap-1 font-bold text-blue-700 bg-white px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-600 hover:text-white transition-colors shadow-sm">
+                                            <Phone size={10} /> {originDepot.phone}
+                                        </a>
+                                    </div>
+                                )}
+                                {destDepot && destDepot.name !== originDepot?.name && (
+                                    <div className="flex justify-between items-center text-xs border-t border-blue-100 pt-3">
+                                        <span className="text-gray-600 font-medium">End: <span className="font-bold text-gray-800">{destDepot.name}</span></span>
+                                        <a href={`tel:${destDepot.phone}`} className="flex items-center gap-1 font-bold text-blue-700 bg-white px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-600 hover:text-white transition-colors shadow-sm">
+                                            <Phone size={10} /> {destDepot.phone}
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Real-time Banner */}
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-3 rounded-xl mb-6 shadow-md flex items-center justify-between">
+                        <div>
+                            <h4 className="font-bold text-sm flex items-center gap-2"><Map size={16}/> Live Tracking</h4>
+                            <p className="text-[10px] opacity-90">Track at major stations.</p>
+                        </div>
+                        <div className="bg-white/20 p-1.5 rounded-lg">
+                            <Monitor size={18} />
+                        </div>
+                    </div>
+
+                    {/* OVERVIEW */}
+                    <div className="bg-white p-4 rounded-xl border border-gray-100 mb-6 text-xs text-gray-600 leading-relaxed shadow-sm">
+                        <h4 className="font-bold text-gray-900 mb-2 flex items-center gap-1.5 text-xs uppercase tracking-wide"><Info size={14} className="text-blue-500"/> Overview</h4>
+                        <p>
+                            This <strong>{bus.type}</strong> bus service, known as <em>{bus.name}</em>, departs at <strong>{bus.time}</strong>. 
+                            It operates on the <strong>{bus.route}</strong> route. 
+                            {bus.stops ? `Major stops include ${bus.stops}. ` : ''} 
+                            Passengers looking for reliable travel between these destinations can choose this service for a comfortable journey.
+                        </p>
+                        {bus.description && <p className="mt-3 text-[10px] text-gray-500 bg-gray-50 p-2 rounded border border-gray-100 italic">Operator Note: {bus.description}</p>}
                     </div>
                     
                     <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100">

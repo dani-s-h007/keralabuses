@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Sitemaps
+Sitemap: https://evidebus.com/sitemap.xml
+
+# Prevent crawling of search result internal loops if necessary
+Disallow: /search/*/-/*

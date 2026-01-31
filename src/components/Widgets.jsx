@@ -1,19 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Trophy, MessageCircle, Star, Phone, Heart, Shield, HelpCircle, 
-  Ticket, PlusCircle
+  Ticket, PlusCircle, AlertTriangle
 } from 'lucide-react';
 import { calculateFare } from '../utils';
+import { getFirestore, collection, onSnapshot, query, orderBy, limit } from "firebase/firestore";
+import { initializeApp } from "firebase/app";
 
-// --- ASSET IMPORTS ---
-import busImg1 from '../assets/bus/keralabuses.png';
-import busImg2 from '../assets/bus/keralabuses_ksrtc.png';
-import busImg3 from '../assets/bus/keralabuses_private_bus.png';
-import busImg4 from '../assets/bus/keralabuses_ksrtc_volvo.png';
+// --- FIREBASE INIT (Safe Check for Shared Instance) ---
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+};
+
+let db;
+try {
+  const app = initializeApp(firebaseConfig); 
+  db = getFirestore(app);
+} catch (e) {
+  try { db = getFirestore(); } catch(err) { console.warn("DB Connection in Widgets failed"); }
+}
+
+// --- SKELETON: CAROUSEL ---
+export const CarouselSkeleton = () => (
+  <div className="w-full h-36 md:h-52 rounded-xl bg-gray-200 animate-pulse mb-5"></div>
+);
 
 // 0.1 IMAGE CAROUSEL
 export const ImageCarousel = () => {
-  const images = [busImg1, busImg2, busImg3, busImg4];
+  const images = [
+    new URL('../assets/bus/keralabuses.png', import.meta.url).href,
+    new URL('../assets/bus/keralabuses_ksrtc.png', import.meta.url).href,
+    new URL('../assets/bus/keralabuses_private_bus.png', import.meta.url).href,
+    new URL('../assets/bus/keralabuses_ksrtc_volvo.png', import.meta.url).href
+  ];
+  
   const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
@@ -21,7 +47,7 @@ export const ImageCarousel = () => {
       setCurrentIndex((prev) => (prev + 1) % images.length);
     }, 5000); 
     return () => clearInterval(interval);
-  }, []);
+  }, [images.length]);
 
   return (
     <div className="relative w-full h-36 md:h-52 rounded-xl overflow-hidden mb-5 shadow-sm group bg-gray-200">
@@ -30,13 +56,11 @@ export const ImageCarousel = () => {
            <img src={img} alt="Kerala Bus" className="w-full h-full object-cover" />
          </div>
        ))}
-       {/* Overlay Gradient */}
        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
        <div className="absolute bottom-4 left-4 text-white max-w-lg z-10">
           <h2 className="text-xl font-bold mb-0.5 drop-shadow-sm">Kerala Bus Timings & Live Status</h2>
           <p className="text-xs opacity-90 drop-shadow-sm font-medium">Search KSRTC, Swift & Private Bus Routes Instantly.</p>
        </div>
-       {/* Dots */}
        <div className="absolute bottom-3 right-4 flex justify-center gap-1.5 z-10">
          {images.map((_, idx) => (
            <button 
@@ -52,7 +76,6 @@ export const ImageCarousel = () => {
 
 // 2. SIDEBAR
 export const Sidebar = ({ setView, onSeed, favorites, onSelectFavorite, points }) => {
-    // Level Calculation
     let level = "Newbie";
     if (points >= 100) level = "Explorer";
     if (points >= 500) level = "Guide";
@@ -69,7 +92,6 @@ export const Sidebar = ({ setView, onSeed, favorites, onSelectFavorite, points }
 
     return (
         <div className="space-y-4">
-            {/* User Stats / Gamification */}
             <div className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm">
                  <div className="flex items-center gap-3 mb-2">
                      <div className="bg-yellow-100 p-2 rounded-full text-yellow-600">
@@ -86,7 +108,6 @@ export const Sidebar = ({ setView, onSeed, favorites, onSelectFavorite, points }
                  <p className="text-[9px] text-gray-400 text-right">{points} / {nextLevel} Points</p>
             </div>
 
-            {/* WhatsApp Widget */}
             <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-xl p-4 shadow-sm relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
                     <MessageCircle size={60} className="text-green-600"/>
@@ -105,7 +126,6 @@ export const Sidebar = ({ setView, onSeed, favorites, onSelectFavorite, points }
                 </a>
             </div>
 
-            {/* Saved/Favorite Buses */}
             {favorites && favorites.length > 0 && (
                  <div className="bg-white border border-yellow-200 bg-yellow-50/50 rounded-xl p-4 shadow-sm">
                     <h4 className="font-bold text-yellow-800 text-xs mb-3 flex items-center gap-2 uppercase tracking-wide">
@@ -147,19 +167,50 @@ export const Sidebar = ({ setView, onSeed, favorites, onSelectFavorite, points }
     );
 };
 
-// 3. NEWS TICKER
-export const NewsTicker = () => (
-  <div className="bg-gradient-to-r from-teal-900 to-teal-800 text-white p-2.5 flex items-center gap-3 rounded-xl mb-5 shadow-sm overflow-hidden border border-teal-700/50">
-    <span className="bg-amber-400 text-black px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 shadow-sm">
-      LIVE UPDATES
-    </span>
-    <div className="flex-1 overflow-hidden relative h-4">
-      <div className="absolute whitespace-nowrap animate-marquee font-medium text-xs tracking-wide top-0">
-        New KSRTC Swift AC Services to Bangalore & Mysore • Private Bus Strike in Kozhikode withdrawn • Check updated monsoon timings for Idukki routes.
-      </div>
+// 3. NEWS TICKER (Disclaimer removed from here)
+export const NewsTicker = () => {
+  const [messages, setMessages] = useState([]);
+  
+  useEffect(() => {
+    if (!db) {
+        setMessages(["Standard Schedule Active. Check individual bus status for details."]);
+        return;
+    }
+
+    try {
+        const q = query(collection(db, "news"), orderBy("date", "desc"), limit(5));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            if (!snapshot.empty) {
+                const newsData = snapshot.docs.map(doc => doc.data().text);
+                setMessages(newsData);
+            } else {
+                setMessages(["Standard Schedule Active. Check individual bus status for details."]);
+            }
+        }, (error) => {
+            console.error("News fetch error:", error);
+            setMessages(["Standard Schedule Active. Check individual bus status for details."]);
+        });
+        return () => unsubscribe();
+    } catch (e) {
+        setMessages(["Standard Schedule Active. Check individual bus status for details."]);
+    }
+  }, []);
+
+  return (
+    <div className="mb-5">
+        <div className="bg-gradient-to-r from-teal-900 to-teal-800 text-white p-2.5 flex items-center gap-3 rounded-xl shadow-sm overflow-hidden border border-teal-700/50">
+            <span className="bg-amber-400 text-black px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 shadow-sm">
+            LIVE UPDATES
+            </span>
+            <div className="flex-1 overflow-hidden relative h-4">
+            <div className="absolute whitespace-nowrap animate-marquee font-medium text-xs tracking-wide top-0">
+                {messages.length > 0 ? messages.join(" • ") : "Loading updates..."}
+            </div>
+            </div>
+        </div>
     </div>
-  </div>
-);
+  );
+};
 
 // 4. FARE CALCULATOR
 export const FareCalculator = () => {
@@ -203,25 +254,33 @@ export const FareCalculator = () => {
     );
 };
 
-// 5. SEO CONTENT
+// 5. SEO CONTENT (Disclaimer added here)
 export const SeoContent = ({ onQuickSearch }) => (
     <div className="pb-6">
         <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm mt-6">
             <h2 className="text-base font-bold text-gray-900 mb-3 pb-2 border-b border-gray-50">Kerala Bus Timings & Route Planner - KSRTC & Private</h2>
             <div className="text-xs text-gray-600 leading-relaxed space-y-2 mb-3">
                 <p>
-                    Find the most accurate and up-to-date <strong>Kerala Bus Timings</strong>. Whether you are looking for <strong>KSRTC Super Fast</strong>, <strong>Low Floor AC</strong>, <strong>Swift Deluxe</strong>, or <strong>Private Bus</strong> schedules, evidebus.in is your ultimate travel companion. We cover all major districts including Malappuram, Kozhikode, Wayanad, Palakkad, Thrissur, Ernakulam, and Thiruvananthapuram.
+                    Find the most accurate and up-to-date <strong>Kerala Bus Timings</strong>. Whether you are looking for <strong>KSRTC Super Fast</strong>, <strong>Low Floor AC</strong>, <strong>Swift Deluxe</strong>, or <strong>Private Bus</strong> schedules,evidebus.com is your ultimate travel companion. We cover all major districts including Malappuram, Kozhikode, Wayanad, Palakkad, Thrissur, Ernakulam, and Thiruvananthapuram.
                 </p>
                 <p>
                     Plan your journey from <strong>Pandikkad to Perinthalmanna</strong>, <strong>Manjeri to Kozhikode</strong>, or any other route with our easy-to-use search engine. Get live updates, report delays, and contribute to the community.
                 </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 mb-6">
                 {['KSRTC Timing', 'Private Bus Stand', 'Kerala Bus Route', 'Malappuram Bus', 'Kozhikode Bus', 'Swift Bus Time', 'Limited Stop', 'Ordinary Bus'].map(tag => (
                     <span key={tag} onClick={() => onQuickSearch(tag)} className="bg-gray-50 text-gray-600 text-[10px] px-3 py-1.5 rounded-full border border-gray-200 hover:bg-teal-600 hover:text-white hover:border-teal-600 cursor-pointer transition-colors font-medium">
                         {tag}
                     </span>
                 ))}
+            </div>
+
+            {/* DISCLAIMER SECTION */}
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex gap-2 items-start">
+                <AlertTriangle size={14} className="text-red-700 mt-0.5 shrink-0" />
+                <p className="text-[10px] text-red-800 leading-relaxed text-justify font-medium">
+                    Disclaimer: Vehicle details may not be exact. Actual timings may vary according to the traffic and road conditions. We are not responsible for any time conflicts. We are not having any affiliation with any of the operators and schedule details may vary significantly depending on the operators. evidebus.com is just a directory of buses.
+                </p>
             </div>
         </div>
     </div>

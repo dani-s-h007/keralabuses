@@ -9,6 +9,158 @@ export const BUS_STOPS = [...new Set(BUS_STOPS_RAW)];
 // --- SEED DATA (EMPTY AS REQUESTED) ---
 export const SEED_BUSES = [];
 
+// --- DEPOT DATA ---
+export const DEPOT_DATA = [
+    {
+        district: "Alappuzha",
+        depots: [
+            { name: "Alappuzha", phone: "9188933748" },
+            { name: "Chengannur", phone: "9188933750" },
+            { name: "Cherthala", phone: "9188933751" },
+            { name: "Kayamkulam", phone: "9188933754" },
+            { name: "Mavelikkara", phone: "9188933756" },
+            { name: "Edathua", phone: "9188933752" },
+            { name: "Haripad", phone: "9188933753" }
+        ]
+    },
+    {
+        district: "Ernakulam",
+        depots: [
+            { name: "Aluva", phone: "9188933776" },
+            { name: "Ernakulam", phone: "9188933779" },
+            { name: "Koothattukulam", phone: "9188933782" },
+            { name: "Muvattupuzha", phone: "9188933785" },
+            { name: "Perumbavoor", phone: "9188933788" },
+            { name: "Piravom", phone: "9188933790" },
+            { name: "Angamaly", phone: "9188933778" },
+            { name: "Ernakulam Jetty", phone: "9188933780" },
+            { name: "Kothamangalam", phone: "9188933784" },
+            { name: "North Paravur", phone: "9188933787" },
+            { name: "Vyttila Hub", phone: "9188933781" }
+        ]
+    },
+    {
+        district: "Idukki",
+        depots: [
+            { name: "Moolamattom", phone: "9188933770" },
+            { name: "Munnar", phone: "9188933771" },
+            { name: "Thodupuzha", phone: "9188933775" },
+            { name: "Adimali", phone: "9188933772" },
+            { name: "Kattappana", phone: "9188933766" },
+            { name: "Kumily Town", phone: "9188933769" },
+            { name: "Nedumkandam", phone: "9188933774" }
+        ]
+    },
+    {
+        district: "Kannur",
+        depots: [
+            { name: "Kannur", phone: "9188933822" },
+            { name: "Thalassery", phone: "9188933824" },
+            { name: "Payyanur", phone: "9188933823" }
+        ]
+    },
+    {
+        district: "Kasaragod",
+        depots: [
+            { name: "Kanhangad", phone: "9188933825" },
+            { name: "Kasaragod", phone: "9188933826" }
+        ]
+    },
+    {
+        district: "Kollam",
+        depots: [
+            { name: "Kollam", phone: "9188933739" },
+            { name: "Kottarakkara", phone: "9188933732" },
+            { name: "Punalur", phone: "9188933730" },
+            { name: "Karunagappalli", phone: "9188933736" },
+            { name: "Chadayamangalam", phone: "9188933728" }
+        ]
+    },
+    {
+        district: "Kottayam",
+        depots: [
+            { name: "Kottayam", phone: "9188933760" },
+            { name: "Changanassery", phone: "9188933757" },
+            { name: "Pala", phone: "9188933762" },
+            { name: "Eerattupetta", phone: "9188933758" },
+            { name: "Vaikom", phone: "9188933765" }
+        ]
+    },
+    {
+        district: "Kozhikode",
+        depots: [
+            { name: "Kozhikode", phone: "9188933809" },
+            { name: "Thamarassery", phone: "9188933811" },
+            { name: "Vadakara", phone: "9188933814" },
+            { name: "Thiruvambadi", phone: "9188933812" }
+        ]
+    },
+    {
+        district: "Malappuram",
+        depots: [
+            { name: "Malappuram", phone: "9188933803" },
+            { name: "Perinthalmanna", phone: "9188933806" },
+            { name: "Nilambur", phone: "9188933805" },
+            { name: "Ponnani", phone: "9188933807" },
+            { name: "Tirur", phone: "9188933808" }
+        ]
+    },
+    {
+        district: "Palakkad",
+        depots: [
+            { name: "Palakkad", phone: "9188933800" },
+            { name: "Mannarkkad", phone: "9188933799" },
+            { name: "Vadakkencherry", phone: "9188933802" },
+            { name: "Chittur", phone: "9188933798" }
+        ]
+    },
+    {
+        district: "Pathanamthitta",
+        depots: [
+            { name: "Pathanamthitta", phone: "9188933744" },
+            { name: "Adoor", phone: "9188933740" },
+            { name: "Thiruvalla", phone: "9188933746" },
+            { name: "Pamba", phone: "9497024092" }
+        ]
+    },
+    {
+        district: "Thiruvananthapuram",
+        depots: [
+            { name: "TVM Central", phone: "9188933716" },
+            { name: "Neyyattinkara", phone: "9188933708" },
+            { name: "Nedumangad", phone: "9188933702" },
+            { name: "Attingal", phone: "9188933701" },
+            { name: "Vizhinjam", phone: "9188933725" }
+        ]
+    },
+    {
+        district: "Thrissur",
+        depots: [
+            { name: "Thrissur", phone: "9188933797" },
+            { name: "Guruvayoor", phone: "9188933792" },
+            { name: "Chalakudy", phone: "9188933791" },
+            { name: "Kodungallur", phone: "9188933794" }
+        ]
+    },
+    {
+        district: "Wayanad",
+        depots: [
+            { name: "Sultan Bathery", phone: "9188933819" },
+            { name: "Kalpetta", phone: "9188933817" },
+            { name: "Mananthavady", phone: "9188933818" }
+        ]
+    },
+    {
+        district: "Outside Kerala",
+        depots: [
+            { name: "Bangalore", phone: "9188933820" },
+            { name: "Mysore", phone: "9188933821" },
+            { name: "Coimbatore", phone: "9188933801" },
+            { name: "Mangalore", phone: "9188933827" }
+        ]
+    }
+];
+
 // --- HELPER FUNCTIONS ---
 export const formatTime = (timeStr) => {
     if (!timeStr) return "";
@@ -82,7 +234,7 @@ export const generateSchema = (pageType, data = {}) => {
       "description": "Find accurate bus timings for Kerala Private and KSRTC buses.",
       "potentialAction": {
         "@type": "SearchAction",
-        "target": "https://evidebus.com/#/search/{search_term_string}",
+        "target": "https://evidebus.com/search/{search_term_string}",
         "query-input": "required name=search_term_string"
       }
     };
