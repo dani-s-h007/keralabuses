@@ -294,6 +294,9 @@ export default function App() {
       updateMetaTag('og:description', description);
       updateMetaTag('og:url', window.location.href);
       updateMetaTag('og:type', 'website');
+
+      updateMetaTag('og:image', image);
+      updateMetaTag('twitter:image', image);
       
       const scriptId = "json-ld-schema";
       let script = document.getElementById(scriptId);
