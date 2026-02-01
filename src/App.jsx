@@ -267,7 +267,8 @@ export default function App() {
       // --- DYNAMIC SEO TITLES & META TAGS (UPDATED) ---
       let title = "evidebus.com - Find Private & KSRTC Bus Timings";
       let description = "Find real-time Kerala bus timings for KSRTC and Private buses. Check routes, fares, and live station boards.";
-
+      let image = `${window.location.origin}/favicon/evidebus-hero.png`;
+      
       if (view === 'detail' && selectedBus) {
           title = `${selectedBus.route} ${selectedBus.time} Bus Timing - evidebus.com`;
           description = `Check detailed timing, stops, and fare for ${selectedBus.name} (${selectedBus.type}) on the ${selectedBus.route} route.`;
