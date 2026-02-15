@@ -1,11 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   PlusCircle, Edit3, Clock, Trash2, Save, X, Maximize2, 
   MessageCircle, AlertTriangle, MessageSquare, ThumbsUp, 
   BarChart3, Map, Monitor, Info, ChevronRight, Star, Share2, 
-  ArrowUpCircle, ArrowDownCircle, PlusSquare, Phone, CheckSquare, Square, 
-  Loader2, AlertOctagon, HelpCircle, Search, Ban, Split, GitMerge, ShieldAlert
+  ArrowUpCircle, ArrowDownCircle, PlusSquare, Phone, CheckSquare, 
+  Loader2, AlertOctagon, HelpCircle, ShieldAlert, GitMerge, Link as LinkIcon,
+  GitBranch, ArrowRight
 } from 'lucide-react';
 import { formatTime, DEPOT_DATA, BUS_STOPS_RAW } from '../utils';
 
@@ -21,20 +22,25 @@ export const BusDetailSkeleton = () => (
   </div>
 );
 
-// --- HELPER: TIME CONVERSION ---
+// ==========================================
+// 1. ROBUST TIME ALGORITHMS
+// ==========================================
+
+// Convert "10:30 PM" to minutes (0 - 1439)
 const getMinutesFromTime = (timeStr) => {
     if (!timeStr || timeStr === 'TBD') return -1;
     try {
         let hours = 0, minutes = 0;
-        if (timeStr.toLowerCase().includes('m')) {
-            const [time, modifier] = timeStr.split(' ');
+        const cleanStr = timeStr.toUpperCase().replace(/\./g, '').trim();
+        if (cleanStr.includes('M')) { 
+            const [time, modifier] = cleanStr.split(' ');
             let [h, m] = time.split(':');
             hours = parseInt(h, 10);
             minutes = parseInt(m, 10);
-            if (modifier.toUpperCase() === 'PM' && hours !== 12) hours += 12;
-            if (modifier.toUpperCase() === 'AM' && hours === 12) hours = 0;
-        } else if (timeStr.includes(':')) {
-            const [h, m] = timeStr.split(':');
+            if (modifier === 'PM' && hours !== 12) hours += 12;
+            if (modifier === 'AM' && hours === 12) hours = 0;
+        } else if (cleanStr.includes(':')) { 
+            const [h, m] = cleanStr.split(':');
             hours = parseInt(h, 10);
             minutes = parseInt(m, 10);
         }
@@ -42,12 +48,26 @@ const getMinutesFromTime = (timeStr) => {
     } catch (e) { return -1; }
 };
 
-// --- HELPER: STRING NORMALIZATION ---
-const normalizeStr = (str) => {
-    return str ? str.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+// Calculates minutes relative to Anchor Time. Handles Midnight Crossover.
+const getEffectiveMinutes = (stopTime, originTime) => {
+    const stopMin = getMinutesFromTime(stopTime);
+    const originMin = getMinutesFromTime(originTime);
+    if (stopMin === -1 || originMin === -1) return stopMin;
+    if (stopMin < originMin) return stopMin + 1440; 
+    return stopMin;
 };
 
-// --- HELPER: FORMAT DISPLAY TIME ---
+// Returns circular time difference (e.g. 23:55 to 00:05 is 10 mins)
+const getCircularTimeDiff = (timeA, timeB) => {
+    const minA = getMinutesFromTime(timeA);
+    const minB = getMinutesFromTime(timeB);
+    if (minA === -1 || minB === -1) return 9999;
+    const diff = Math.abs(minA - minB);
+    return Math.min(diff, 1440 - diff);
+};
+
+const normalizeStr = (str) => str ? str.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+
 const to24Hour = (time12h) => {
     if (!time12h || time12h === "TBD") return "";
     if (!time12h.includes("M")) return time12h;
@@ -58,7 +78,6 @@ const to24Hour = (time12h) => {
     return `${hours.toString().padStart(2, '0')}:${minutes}`;
 };
 
-// --- HELPER: DEFAULT STOPS ---
 const generateDefaultStops = (bus) => {
     return [
         { name: bus.from || "Origin", time: bus.time || "00:00 AM" },
@@ -67,7 +86,7 @@ const generateDefaultStops = (bus) => {
 };
 
 // ==========================================
-// 6. ADD BUS FORM (UPDATED WITH CONFIRMATION & SPAM CHECK)
+// 6. ADD BUS FORM (ADVANCED ALGORITHM)
 // ==========================================
 export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) => {
     const navigate = useNavigate();
@@ -78,53 +97,112 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
     });
     const [intermediateStops, setIntermediateStops] = useState([]); 
     
-    // Mode Selection
     const [mode, setMode] = useState('full'); // 'full' | 'stop'
     const [isSubmitting, setIsSubmitting] = useState(false);
     
+    // --- AUTO-MERGE & ORPHAN STATE ---
+    const [detectedOrphans, setDetectedOrphans] = useState([]);
+    const [mergedOrphans, setMergedOrphans] = useState(new Set()); 
+    const [selectedParent, setSelectedParent] = useState(null); 
+
     // Modals
-    const [showConfirmModal, setShowConfirmModal] = useState(false); // Re-added Confirmation
+    const [showConfirmModal, setShowConfirmModal] = useState(false);
     const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
     const [isStrictDuplicate, setIsStrictDuplicate] = useState(false);
     const [duplicateList, setDuplicateList] = useState([]);
-    const [nameMatches, setNameMatches] = useState([]); 
-
-    // Autocomplete
+    
     const [suggestions, setSuggestions] = useState({ from: [], to: [], stop: null });
     const [activeStopIndex, setActiveStopIndex] = useState(null); 
+    const [nameMatches, setNameMatches] = useState([]); 
 
-    // --- LOGIC: SMART PARENT DISCOVERY ---
+    // ---------------------------------------------------------
+    // 🧠 1. AUTO-MERGE SCANNER (When creating FULL route)
+    // ---------------------------------------------------------
+    useEffect(() => {
+        if (mode === 'full' && formData.name.length > 2 && formData.time) {
+            const inputName = normalizeStr(formData.name);
+            const inputStartMins = getMinutesFromTime(formatTime(formData.time));
+
+            // Find "Skeleton" or "Partial" buses with same name
+            const orphans = existingBuses.filter(b => {
+                const isSkeleton = b.isSkeleton || (b.route && b.route.includes("(Partial)"));
+                const nameMatch = normalizeStr(b.name).includes(inputName);
+                if (!isSkeleton || !nameMatch) return false;
+
+                // Time Check: Orphan time must be AFTER route start
+                const orphanMins = getMinutesFromTime(b.time);
+                let adjustedOrphan = orphanMins;
+                if (orphanMins < inputStartMins) adjustedOrphan += 1440;
+
+                const diff = adjustedOrphan - inputStartMins;
+                return diff > 0 && diff < 600; // Orphan must be within 10 hours after start
+            });
+
+            setDetectedOrphans(orphans);
+        } else {
+            setDetectedOrphans([]);
+        }
+    }, [formData.name, formData.time, mode, existingBuses]);
+
+    const handleAutoMerge = () => {
+        if (detectedOrphans.length === 0) return;
+        const newStops = [...intermediateStops];
+        const newMergedSet = new Set(mergedOrphans);
+
+        detectedOrphans.forEach(orphan => {
+            if (newMergedSet.has(orphan.id)) return;
+            const stopName = orphan.from;
+            const stopTime = to24Hour(orphan.time);
+            newStops.push({ name: stopName, time: stopTime });
+            newMergedSet.add(orphan.id);
+        });
+
+        // Sort by time string roughly
+        newStops.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+        setIntermediateStops(newStops);
+        setMergedOrphans(newMergedSet);
+        showToast(`Merged ${detectedOrphans.length} orphan stop(s)!`, "success");
+    };
+
+    // ---------------------------------------------------------
+    // 🧠 2. PARENT SCANNER (When adding STOP)
+    // ---------------------------------------------------------
     const potentialParentBuses = useMemo(() => {
         if (mode === 'full' || !formData.time) return [];
-        
         const inputMinutes = getMinutesFromTime(formatTime(formData.time));
         const inputNameRaw = normalizeStr(formData.name);
-
         if (inputMinutes === -1) return [];
 
         return existingBuses.filter(bus => {
+            if (bus.isSkeleton) return false; // Don't attach to another skeleton
             const busStartMinutes = getMinutesFromTime(bus.time);
-            const busEndMinutes = getMinutesFromTime(bus.endTime); 
+            
+            // Name Filter (Loose)
+            if (inputNameRaw.length > 0 && !normalizeStr(bus.name).includes(inputNameRaw)) return false;
 
-            // 1. NAME FILTER: Strict match if typed
-            if (inputNameRaw.length > 0 && !normalizeStr(bus.name).includes(inputNameRaw)) {
-                return false;
-            }
+            let adjustedInputMinutes = inputMinutes;
+            if (inputMinutes < busStartMinutes) adjustedInputMinutes += 1440;
 
-            // 2. START TIME CHECK: 5 hour window
-            const startDiff = inputMinutes - busStartMinutes;
-            if (startDiff < -15 || startDiff > 300) return false; 
-
-            // 3. DESTINATION TIME CHECK
-            if (busEndMinutes !== -1) {
-                 if (inputMinutes > (busEndMinutes + 15)) return false;
-            }
-
-            return true;
+            const minutesSinceStart = adjustedInputMinutes - busStartMinutes;
+            return minutesSinceStart > -15 && minutesSinceStart < 600; 
         }).sort((a, b) => getMinutesFromTime(a.time) - getMinutesFromTime(b.time)).slice(0, 5);
     }, [mode, formData.time, formData.name, existingBuses]);
 
-    // --- INPUT HANDLERS ---
+    // ---------------------------------------------------------
+    // 🧠 3. SWITCH MODE: "CONVERT TO PARENT"
+    // ---------------------------------------------------------
+    const handleConvertToMainRoute = () => {
+        setMode('full');
+        setFormData(prev => ({
+            ...prev,
+            from: prev.from, // Stop Name becomes Origin
+            to: '', // Clear dest, ask user to fill it
+            time: prev.time
+        }));
+        showToast("Switched to New Route. Please enter Destination.", "info");
+    };
+
+    // --- STANDARD HANDLERS ---
     const handleLocationChange = (e, field) => {
         const val = e.target.value;
         setFormData({ ...formData, [field]: val });
@@ -144,12 +222,9 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
     const handleNameChange = (e) => {
         const val = e.target.value;
         setFormData({ ...formData, name: val });
-        
         if (mode === 'full' && val.length > 2) {
-            const matches = existingBuses.filter(b => 
-                normalizeStr(b.name).includes(normalizeStr(val))
-            );
-            setNameMatches(matches.slice(0, 5)); 
+            const matches = existingBuses.filter(b => normalizeStr(b.name).includes(normalizeStr(val)));
+            setNameMatches(matches.slice(0, 5));
         } else {
             setNameMatches([]);
         }
@@ -157,7 +232,7 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
 
     const selectNameMatch = (busName) => {
         setFormData({ ...formData, name: busName });
-        setNameMatches([]); 
+        setNameMatches([]);
     };
 
     const addStopRow = () => setIntermediateStops([...intermediateStops, { name: '', time: '' }]);
@@ -190,7 +265,6 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
         setActiveStopIndex(null);
     };
 
-    // --- ALGORITHM: SUBMIT & DUPLICATE CHECK ---
     const handleSubmit = (e) => {
         e.preventDefault();
         
@@ -199,49 +273,42 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
             return;
         }
 
-        const inputName = normalizeStr(formData.name);
-        const inputFrom = normalizeStr(formData.from);
-        const inputTo = normalizeStr(formData.to);
-        const inputMinutes = getMinutesFromTime(formData.time);
+        // DUPLICATE CHECK
+        if (mode === 'full' || selectedParent) {
+            const inputName = normalizeStr(formData.name);
+            const inputFrom = normalizeStr(formData.from);
+            
+            const strictMatches = [];
+            const softMatches = [];
 
-        const strictMatches = [];
-        const softMatches = [];
+            existingBuses.forEach(bus => {
+                const timeDiff = getCircularTimeDiff(bus.time, formData.time);
+                const busFrom = normalizeStr(bus.from);
+                const busName = normalizeStr(bus.name);
 
-        existingBuses.forEach(bus => {
-            const busMinutes = getMinutesFromTime(bus.time);
-            const busFrom = normalizeStr(bus.from);
-            const busTo = normalizeStr(bus.to);
-            const busName = normalizeStr(bus.name);
-            const timeDelta = Math.abs(busMinutes - inputMinutes);
+                if (busName === inputName && busFrom === inputFrom && timeDiff <= 5) {
+                    strictMatches.push(bus);
+                }
+                else if (timeDiff <= 15 && busFrom === inputFrom) { 
+                    softMatches.push(bus);
+                }
+            });
 
-            if (busName === inputName && busFrom === inputFrom && busTo === inputTo && timeDelta <= 5) {
-                strictMatches.push(bus);
+            if (strictMatches.length > 0) {
+                setDuplicateList(strictMatches);
+                setIsStrictDuplicate(true);
+                setShowDuplicateWarning(true);
+                return;
             }
-            else if (timeDelta <= 15) { 
-                if (busFrom === inputFrom) softMatches.push(bus);
-            }
-        });
 
-        if (strictMatches.length > 0) {
-            setDuplicateList(strictMatches);
-            setIsStrictDuplicate(true);
-            setShowDuplicateWarning(true);
-            return;
+            if (softMatches.length > 0) {
+                setDuplicateList(softMatches);
+                setIsStrictDuplicate(false);
+                setShowDuplicateWarning(true);
+                return;
+            }
         }
 
-        if (softMatches.length > 0) {
-            setDuplicateList(softMatches);
-            setIsStrictDuplicate(false);
-            setShowDuplicateWarning(true);
-            return;
-        }
-
-        // NO DUPLICATES -> SHOW CONFIRMATION MODAL
-        setShowConfirmModal(true);
-    };
-
-    const handleProceedAnyway = () => {
-        setShowDuplicateWarning(false);
         setShowConfirmModal(true);
     };
 
@@ -250,31 +317,39 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
         setIsSubmitting(true);
         
         const displayTime = formatTime(formData.time);
-        const destTime = formData.endTime ? formatTime(formData.endTime) : '00:00 AM';
         
-        const route = mode === 'full' 
-            ? `${formData.from} - ${formData.to}` 
-            : `${formData.from} (Partial)`;
+        // --- CASE: ORPHAN CREATION ---
+        const isSkeleton = mode === 'stop' && !selectedParent;
+        
+        const destTime = formData.endTime ? formatTime(formData.endTime) : (isSkeleton ? 'TBD' : '00:00 AM');
+        const route = isSkeleton ? `${formData.from} (Partial Route)` : `${formData.from} - ${formData.to}`;
         
         const formattedIntermediate = intermediateStops
             .filter(s => s.name.trim() !== '')
             .map(s => ({ name: s.name, time: s.time ? formatTime(s.time) : 'TBD' }));
         
         let initialStops = [];
-        if (mode === 'full') {
-            initialStops = [{ name: formData.from, time: displayTime }, ...formattedIntermediate, { name: formData.to, time: destTime }];
+        if (isSkeleton) {
+            initialStops = [{ name: formData.from, time: displayTime }];
         } else {
-            initialStops = [{ name: formData.from, time: displayTime }, ...formattedIntermediate];
+            initialStops = [{ name: formData.from, time: displayTime }, ...formattedIntermediate, { name: formData.to, time: destTime }];
         }
 
-        const stopsString = formattedIntermediate.map(s => s.name).join(', ');
+        initialStops.sort((a, b) => {
+            const minA = getEffectiveMinutes(a.time, displayTime);
+            const minB = getEffectiveMinutes(b.time, displayTime);
+            return minA - minB;
+        });
+
+        const stopsString = initialStops.map(s => s.name).join(', ');
 
         onAdd({ 
             ...formData, 
-            to: mode === 'full' ? formData.to : '', 
+            to: isSkeleton ? '(Unknown)' : formData.to, 
             time: displayTime, route, stops: stopsString, 
             votes: 0, comments: [], detailedStops: initialStops, 
-            status: 'On Time', crowd: 'Low' 
+            status: 'On Time', crowd: 'Low',
+            isSkeleton: isSkeleton
         });
     };
 
@@ -287,7 +362,7 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
     return (
         <div className="bg-white p-5 rounded-xl shadow-lg border border-gray-100 animate-fade-in max-w-2xl mx-auto relative">
             
-            {/* DUPLICATE / SPAM RESTRICTION MODAL */}
+            {/* DUPLICATE WARNING MODAL */}
             {showDuplicateWarning && (
                  <div className="absolute inset-0 bg-white/95 z-50 rounded-xl flex flex-col items-center justify-center p-6 text-center animate-fade-in">
                     <div className={`p-3 rounded-full mb-3 ${isStrictDuplicate ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
@@ -298,38 +373,24 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
                     </h3>
                     <p className="text-xs text-gray-600 mb-4 max-w-xs mx-auto leading-relaxed">
                         {isStrictDuplicate 
-                            ? "This record already exists. To prevent spam, duplicate entries are not allowed."
+                            ? "This record already exists."
                             : <span>We found buses at <strong>{formData.from}</strong> around <strong>{formatTime(formData.time)}</strong>. Is it one of these?</span>
                         }
                     </p>
-                    
                     <div className="w-full max-w-sm max-h-48 overflow-y-auto border border-gray-200 rounded-lg mb-4 bg-gray-50 text-left">
                         {duplicateList.map((bus, idx) => (
                             <div key={idx} className="p-3 border-b border-gray-200 last:border-0 bg-white flex justify-between items-center group hover:bg-teal-50 transition-colors">
                                 <div>
                                     <div className="font-bold text-sm text-gray-800">{bus.name || "Bus Service"}</div>
                                     <div className="text-[10px] text-gray-500">{bus.route}</div>
-                                    <div className="text-[10px] font-bold text-teal-600 mt-0.5">{bus.type} • {bus.time}</div>
                                 </div>
-                                <button 
-                                    onClick={() => navigate(`/bus/${getSlug(bus)}`)}
-                                    className="bg-teal-100 text-teal-700 p-2 rounded-lg hover:bg-teal-200 transition-colors flex items-center gap-1 text-[10px] font-bold"
-                                >
-                                    Open <ChevronRight size={14} />
-                                </button>
+                                <button onClick={() => navigate(`/bus/${getSlug(bus)}`)} className="bg-teal-100 text-teal-700 p-2 rounded-lg hover:bg-teal-200 font-bold text-[10px]">Open</button>
                             </div>
                         ))}
                     </div>
-
                     <div className="flex gap-2 w-full max-w-xs">
-                        <button onClick={onCancel} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg text-xs hover:bg-gray-200">
-                            Cancel
-                        </button>
-                        {!isStrictDuplicate && (
-                            <button onClick={handleProceedAnyway} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-lg text-xs hover:bg-teal-700 shadow-sm">
-                                Create Anyway
-                            </button>
-                        )}
+                        <button onClick={onCancel} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg text-xs hover:bg-gray-200">Cancel</button>
+                        {!isStrictDuplicate && <button onClick={() => { setShowDuplicateWarning(false); setShowConfirmModal(true); }} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-lg text-xs shadow-sm">Create Anyway</button>}
                     </div>
                  </div>
             )}
@@ -340,74 +401,97 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
                     <div className="bg-teal-50 p-4 rounded-full text-teal-600 mb-4">
                         <AlertOctagon size={40} />
                     </div>
-                    <h3 className="text-lg font-bold text-gray-900 mb-2">Verify Information</h3>
+                    <h3 className="text-lg font-bold text-gray-900 mb-2">
+                        {mode === 'stop' && !selectedParent ? "Create Orphan Entry?" : "Verify Information"}
+                    </h3>
                     <p className="text-xs text-gray-600 mb-6 max-w-xs leading-relaxed">
-                        Please confirm that <strong>{formData.from}</strong> to <strong>{mode === 'full' ? formData.to : '(Intermediate)'}</strong> at <strong>{formatTime(formData.time)}</strong> is accurate.
+                        {mode === 'stop' && !selectedParent 
+                            ? <span>No parent bus selected. This will create a <strong>Partial Record</strong>. It will be <strong>automatically merged</strong> when the main bus is added later.</span>
+                            : <span>Please confirm that <strong>{formData.from}</strong> to <strong>{formData.to}</strong> at <strong>{formatTime(formData.time)}</strong> is accurate.</span>
+                        }
                     </p>
                     <div className="flex gap-3 w-full max-w-xs">
                         <button onClick={() => setShowConfirmModal(false)} className="flex-1 py-3 bg-gray-100 text-gray-700 font-bold rounded-lg text-xs hover:bg-gray-200">Go Back</button>
                         <button onClick={confirmAndSubmit} disabled={isSubmitting} className="flex-1 py-3 bg-teal-600 text-white font-bold rounded-lg text-xs hover:bg-teal-700 flex items-center justify-center gap-2">
-                            {isSubmitting ? <Loader2 size={14} className="animate-spin"/> : <CheckSquare size={14}/>} Confirm & Post
+                            {isSubmitting ? <Loader2 size={14} className="animate-spin"/> : <CheckSquare size={14}/>} {mode === 'stop' && !selectedParent ? "Create Partial" : "Confirm & Post"}
                         </button>
                     </div>
                 </div>
             )}
 
-            {/* --- TOP TABS (MODE SELECTION) --- */}
+            {/* --- TOP TABS --- */}
             <div className="flex mb-6 bg-gray-100 p-1 rounded-xl">
-                <button 
-                    onClick={() => setMode('full')}
-                    className={`flex-1 py-2.5 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${mode === 'full' ? 'bg-white text-teal-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
+                <button onClick={() => setMode('full')} className={`flex-1 py-2.5 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${mode === 'full' ? 'bg-white text-teal-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
                     <PlusCircle size={14} /> New Main Route
                 </button>
-                <button 
-                    onClick={() => setMode('stop')}
-                    className={`flex-1 py-2.5 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${mode === 'stop' ? 'bg-white text-indigo-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                >
+                <button onClick={() => setMode('stop')} className={`flex-1 py-2.5 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${mode === 'stop' ? 'bg-white text-indigo-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
                     <GitMerge size={14} /> Add Intermediate Stop
                 </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
                 
-                {/* --- SMART DISCOVERY FOR INTERMEDIATE STOPS --- */}
+                {/* --- SMART DISCOVERY FOR INTERMEDIATE STOPS (THE NEW ALGORITHM) --- */}
                 {mode === 'stop' && (
-                    <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-4 animate-fade-in">
-                        <h4 className="text-xs font-bold text-indigo-900 mb-2 flex items-center gap-2"><HelpCircle size={14}/> Is this stop for an existing bus?</h4>
-                        <p className="text-[10px] text-indigo-700 mb-3 leading-relaxed">
-                            Enter the stop name and time. 
-                            {formData.name ? <span> We are filtering for buses named <strong>"{formData.name}"</strong>.</span> : " We will check for any buses."}
-                        </p>
+                    <div className={`p-4 rounded-xl border mb-4 animate-fade-in ${potentialParentBuses.length > 0 ? 'bg-indigo-50 border-indigo-100' : 'bg-orange-50 border-orange-100'}`}>
+                        <h4 className={`text-xs font-bold mb-2 flex items-center gap-2 ${potentialParentBuses.length > 0 ? 'text-indigo-900' : 'text-orange-800'}`}>
+                            <HelpCircle size={14}/> {potentialParentBuses.length > 0 ? "Select Parent Bus" : "No Parent Bus Found"}
+                        </h4>
                         
                         {potentialParentBuses.length > 0 ? (
                             <div className="space-y-2">
-                                <div className="text-[10px] font-bold text-gray-500 uppercase">Valid Parent Buses:</div>
                                 {potentialParentBuses.map((bus, i) => (
-                                    <div key={i} className="bg-white p-3 rounded-lg border border-indigo-100 shadow-sm flex justify-between items-center">
+                                    <div key={i} className={`bg-white p-3 rounded-lg border shadow-sm flex justify-between items-center cursor-pointer transition-all ${selectedParent?.id === bus.id ? 'border-teal-500 ring-1 ring-teal-500' : 'border-indigo-100'}`} onClick={() => setSelectedParent(bus)}>
                                         <div>
                                             <div className="text-xs font-bold text-gray-800">{bus.name}</div>
                                             <div className="text-[10px] text-gray-500">{bus.route}</div>
-                                            <div className="text-[10px] font-bold text-teal-600 mt-0.5">Start: {bus.time} {bus.endTime && `• End: ${bus.endTime}`}</div>
+                                            <div className="text-[10px] font-bold text-teal-600 mt-0.5">Start: {bus.time}</div>
                                         </div>
-                                        <button 
-                                            type="button"
-                                            onClick={() => navigate(`/bus/${getSlug(bus)}`)}
-                                            className="bg-indigo-600 text-white px-3 py-1.5 rounded text-[10px] font-bold hover:bg-indigo-700 transition-colors"
-                                        >
-                                            Add Stop Here
-                                        </button>
+                                        {selectedParent?.id === bus.id && <CheckSquare size={16} className="text-teal-600"/>}
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            formData.time && <div className="text-[10px] text-gray-400 italic">
-                                {formData.name 
-                                    ? `No buses named "${formData.name}" found currently running on this route at this time.`
-                                    : `No buses found running within the valid time window (${formatTime(formData.time)}).`
-                                }
+                            <div className="space-y-3">
+                                <p className="text-[10px] text-orange-800 leading-relaxed">
+                                    We couldn't find a bus named <strong>"{formData.name}"</strong> passing <strong>{formData.from}</strong> around <strong>{formatTime(formData.time)}</strong>.
+                                </p>
+                                
+                                <div className="bg-white p-3 rounded-lg border border-orange-200 shadow-sm">
+                                    <p className="text-[10px] font-bold text-gray-600 mb-2">Is this actually the START of a new bus route?</p>
+                                    <div className="flex gap-2">
+                                        <button type="button" onClick={handleConvertToMainRoute} className="flex-1 bg-teal-600 text-white py-2 rounded-lg text-[10px] font-bold hover:bg-teal-700 transition-colors flex items-center justify-center gap-1">
+                                            <GitBranch size={12}/> Yes, It's the Start
+                                        </button>
+                                        <button type="button" disabled className="flex-1 bg-orange-50 text-orange-400 py-2 rounded-lg text-[10px] font-bold border border-orange-100 cursor-default flex items-center justify-center gap-1">
+                                            <ArrowRight size={12}/> No, It's a Stop
+                                        </button>
+                                    </div>
+                                    <p className="text-[9px] text-gray-400 mt-2 italic text-center">
+                                        (If you choose "No", we'll save it as a partial stop and merge it later.)
+                                    </p>
+                                </div>
                             </div>
                         )}
+                    </div>
+                )}
+
+                {/* --- AUTO MERGE NOTIFICATION (FULL MODE) --- */}
+                {mode === 'full' && detectedOrphans.length > 0 && (
+                    <div className="bg-teal-50 p-3 rounded-xl border border-teal-200 mb-4 animate-fade-in">
+                        <div className="flex justify-between items-start">
+                            <div>
+                                <h4 className="text-xs font-bold text-teal-800 flex items-center gap-2">
+                                    <LinkIcon size={14}/> Found {detectedOrphans.length} Orphan Stop(s)
+                                </h4>
+                                <p className="text-[10px] text-teal-600 mt-1">
+                                    We found orphaned stops (e.g. {detectedOrphans[0].from}) that match this bus.
+                                </p>
+                            </div>
+                            <button type="button" onClick={handleAutoMerge} disabled={mergedOrphans.size > 0} className="bg-teal-600 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold hover:bg-teal-700 disabled:opacity-50">
+                                {mergedOrphans.size > 0 ? "Merged!" : "Auto-Merge"}
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -475,7 +559,6 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
                         onChange={handleNameChange} 
                     />
                     
-                    {/* NAME MATCHES DROPDOWN (Only for Main Route Mode) */}
                     {nameMatches.length > 0 && mode === 'full' && (
                         <div className="absolute top-full left-0 w-full bg-white border border-gray-200 rounded-lg shadow-lg z-20 mt-1 max-h-40 overflow-y-auto">
                             <div className="p-2 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase border-b border-gray-200 sticky top-0">Existing Buses</div>
@@ -494,7 +577,7 @@ export const AddBusForm = ({ onCancel, onAdd, showToast, existingBuses = [] }) =
                     )}
                 </div>
                 
-                {/* DYNAMIC STOPS LIST (Visible in both modes) */}
+                {/* DYNAMIC STOPS LIST */}
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                     <label className="text-[10px] font-bold text-gray-500 uppercase block mb-2">Intermediate Stops & Times</label>
                     <div className="space-y-2 mb-3">
@@ -564,11 +647,17 @@ export const BusPost = ({ bus, onBack, addComment, updateBusDetails, onVote, rep
       ? bus.detailedStops 
       : generateDefaultStops(bus);
   
-  // --- SORT STOPS BY TIME ---
+  // --- ALGORITHM: SORT STOPS ---
   const sortedDisplayStops = useMemo(() => {
       const stops = [...displayStops];
-      return stops.sort((a, b) => getMinutesFromTime(a.time) - getMinutesFromTime(b.time));
-  }, [displayStops]);
+      const originTime = bus.time; 
+
+      return stops.sort((a, b) => {
+          const minA = getEffectiveMinutes(a.time, originTime);
+          const minB = getEffectiveMinutes(b.time, originTime);
+          return minA - minB;
+      });
+  }, [displayStops, bus.time]);
 
   const stopsToRender = sortedDisplayStops; 
 
@@ -635,7 +724,11 @@ ${url}`;
       const displayTime = editTime.includes(":") && !editTime.includes("M") ? formatTime(editTime) : editTime;
       const stopsToSave = (bus.detailedStops && bus.detailedStops.length > 0) ? bus.detailedStops : displayStops;
       
-      stopsToSave.sort((a, b) => getMinutesFromTime(a.time) - getMinutesFromTime(b.time));
+      stopsToSave.sort((a, b) => {
+          const minA = getEffectiveMinutes(a.time, displayTime);
+          const minB = getEffectiveMinutes(b.time, displayTime);
+          return minA - minB;
+      });
 
       updateBusDetails(bus.id, {
           name: editName,
@@ -650,22 +743,24 @@ ${url}`;
 
   const handleAddStop = (position) => {
       if(!newStopName) return;
-      const displayTime = newStopTime ? formatTime(newStopTime) : "TBD"; 
+      const stopDisplayTime = newStopTime ? formatTime(newStopTime) : "TBD"; 
       
       let updatedStops = [...displayStops];
-      const newStop = { name: newStopName, time: displayTime };
+      const newStop = { name: newStopName, time: stopDisplayTime };
 
       if (position === 'start') {
           updatedStops.unshift(newStop);
-          if (!newStopTime) updatedStops[0].time = bus.time; 
       } else if (position === 'end') {
           updatedStops.push(newStop);
-          if (!newStopTime) updatedStops[updatedStops.length-1].time = "00:00 AM";
       } else {
           updatedStops.push(newStop);
       }
 
-      updatedStops.sort((a, b) => getMinutesFromTime(a.time) - getMinutesFromTime(b.time));
+      updatedStops.sort((a, b) => {
+          const minA = getEffectiveMinutes(a.time, bus.time);
+          const minB = getEffectiveMinutes(b.time, bus.time);
+          return minA - minB;
+      });
 
       const stopsString = updatedStops.map(s => s.name).join(', ');
       
@@ -797,7 +892,6 @@ ${url}`;
                         </div>
                         <div>
                             <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1.5">Time</label>
-                            {/* FIX: ADDED value and type="time" */}
                             <input 
                                 type="time" 
                                 className="w-full p-2.5 border border-gray-200 rounded-lg text-xs focus:border-teal-500 outline-none" 
@@ -825,7 +919,6 @@ ${url}`;
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                         <label className="text-[10px] font-bold text-gray-500 uppercase block mb-3">Stops & Route Order</label>
                         <div className="mb-3 space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
-                            {/* In Edit mode, we show the raw list (displayStops) */}
                             {displayStops.map((stop, i) => {
                                 const isStart = i === 0;
                                 const isEnd = i === displayStops.length - 1;
@@ -844,9 +937,9 @@ ${url}`;
                                     <div className="flex items-center gap-1 border-l pl-2">
                                         <Clock size={10} className="text-gray-400"/>
                                         <input 
-                                            type="time" /* FIX: Type time for clock picker */
+                                            type="time" 
                                             className="w-20 p-1 border-b border-transparent focus:border-teal-500 focus:outline-none text-right text-[10px] text-gray-500 bg-transparent" 
-                                            value={to24Hour(stop.time)} /* FIX: Format value correctly */
+                                            value={to24Hour(stop.time)} 
                                             onChange={(e) => handleEditStop(i, 'time', e.target.value)}
                                         />
                                     </div>
@@ -881,14 +974,12 @@ ${url}`;
                     </div>
                 </div>
             ) : (
-                /* VIEW MODE - INCREASED FONTS */
+                /* VIEW MODE */
                 <>
                     <div className="flex flex-col md:flex-row justify-between items-start mb-5 gap-3">
                         <div className="w-full">
-                            {/* INCREASED FONT SIZE: Bus Name & DIFFERENT COLOR */}
                             <h1 className="text-3xl md:text-4xl font-extrabold text-indigo-800 leading-tight mb-2 truncate">{bus.name || "Bus Service"}</h1>
                             <div className="flex items-center flex-wrap gap-2">
-                                {/* INCREASED FONT SIZE: Route */}
                                 <span className="text-lg md:text-xl text-gray-700 font-bold truncate max-w-full">{bus.route}</span>
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide border ${bus.type === 'KSRTC' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
                                     {bus.type}
@@ -902,7 +993,6 @@ ${url}`;
                             <div className="flex items-center gap-4">
                                 <Clock size={32} className="text-teal-600 shrink-0" />
                                 <div>
-                                    {/* INCREASED FONT SIZE: Time */}
                                     <span className="text-4xl md:text-5xl font-black tracking-tight text-gray-900 leading-none">{bus.time}</span>
                                     <p className="text-xs text-teal-800 font-bold mt-1 uppercase tracking-wide">Scheduled Departure</p>
                                 </div>
@@ -938,7 +1028,7 @@ ${url}`;
                         </div>
                     )}
 
-                    {/* TIMELINE (With Inline Add) - INCREASED FONTS & MOVED UP */}
+                    {/* TIMELINE */}
                     <div className="mb-6">
                         <div className="flex justify-between items-center mb-4">
                             <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wide flex items-center gap-2"><Map size={14} className="text-gray-400"/> Schedule</h4>
@@ -961,12 +1051,10 @@ ${url}`;
                                         onClick={() => navigate(`/board/${encodeURIComponent(stop.name)}`)}
                                     >
                                         <div className="flex flex-col flex-1 min-w-0">
-                                            {/* FIX: Removed truncate, added break-words */}
                                             <span className="text-lg font-bold text-gray-900 break-words leading-tight hover:text-teal-700 transition-colors pr-2">{stop.name}</span>
                                             {isStart && <span className="text-xs font-black text-teal-600 uppercase tracking-wide mt-0.5">ORIGIN</span>}
                                             {isEnd && <span className="text-xs font-black text-indigo-600 uppercase tracking-wide mt-0.5">DESTINATION</span>}
                                         </div>
-                                        {/* FIX: Time box won't shrink */}
                                         <div className="shrink-0 pt-0.5">
                                             <span className="text-sm font-mono font-bold text-teal-800 bg-teal-50 px-3 py-1 rounded border border-teal-100 whitespace-nowrap block text-center">{stop.time}</span>
                                         </div>

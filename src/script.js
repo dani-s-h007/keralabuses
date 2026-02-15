@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, MapPin, ArrowRightLeft, ChevronRight, Clock, Bus, Trophy, Star, Monitor, X, Maximize2, Sun, Moon, PlusCircle, Phone, ChevronLeft, Globe, Download } from 'lucide-react';
+import { Search, MapPin, ArrowRightLeft, ChevronRight, Clock, Bus, Trophy, Star, Monitor, X, Maximize2, Sun, Moon, PlusCircle, Phone, ChevronLeft, Globe } from 'lucide-react';
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, updateDoc, doc, arrayUnion, query, orderBy, increment, getDocs } from "firebase/firestore";
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, doc, arrayUnion, query, orderBy, increment } from "firebase/firestore";
 
 // --- IMPORTS ---
 import { BUS_STOPS, getMinutesFromMidnight, calculateFare, generateSchema, SEED_BUSES, DEPOT_DATA } from './utils';
@@ -29,37 +29,10 @@ try {
     console.warn("Firebase not connected. Please update firebaseConfig.");
 }
 
-// ==========================================
-// SMART SEARCH ALGORITHM UTILITIES
-// ==========================================
-
-const LOCATION_ALIASES = {
-    "trivandrum": "thiruvananthapuram", "tvm": "thiruvananthapuram",
-    "calicut": "kozhikode", "kozhikkode": "kozhikode", "clt": "kozhikode",
-    "cannore": "kannur", "cannanore": "kannur", "can": "kannur",
-    "cochin": "ernakulam", "kochi": "ernakulam", "ekm": "ernakulam",
-    "alleppey": "alappuzha", "allapuzha": "alappuzha",
-    "trichur": "thrissur", "tcr": "thrissur",
-    "palghat": "palakkad", "pkd": "palakkad",
-    "quilon": "kollam",
-    "bathery": "sulthan bathery", "sultan bathery": "sulthan bathery",
-    "pmna": "perinthalmanna", "perintalmanna": "perinthalmanna"
-};
-
-const getSearchKeywords = (input) => {
-    if (!input) return [];
-    const cleanInput = input.toLowerCase().trim();
-    const keywords = [cleanInput];
-    if (LOCATION_ALIASES[cleanInput]) keywords.push(LOCATION_ALIASES[cleanInput]);
-    Object.keys(LOCATION_ALIASES).forEach(alias => {
-        if (LOCATION_ALIASES[alias] === cleanInput) keywords.push(alias);
-    });
-    return keywords;
-};
-
-// --- HELPER: DYNAMIC SEO TAGS ---
+// --- HELPER: DYNAMIC SEO TAGS (Added) ---
 const updateMetaTag = (name, content) => {
     if (!content) return;
+    // Handle both 'name' (standard) and 'property' (Open Graph)
     let element = document.querySelector(`meta[name="${name}"]`) ||
         document.querySelector(`meta[property="${name}"]`);
 
@@ -75,12 +48,14 @@ const updateMetaTag = (name, content) => {
     element.setAttribute('content', content);
 };
 
+// --- HELPER: GENERATE SEO SLUG ---
 const generateBusSlug = (bus) => {
     const clean = (str) => str ? str.toLowerCase().replace(/[^a-z0-9]/g, '-') : '';
     const timeClean = bus.time ? bus.time.toLowerCase().replace(' ', '-').replace(':', '') : '0000';
     return `${clean(bus.from)}-to-${clean(bus.to)}-${timeClean}-${clean(bus.type)}`;
 };
 
+// --- HELPER: LIVE CLOCK COMPONENT ---
 const LiveClock = React.memo(({ darkMode }) => {
     const [time, setTime] = useState(new Date());
     useEffect(() => {
@@ -98,37 +73,6 @@ const LiveClock = React.memo(({ darkMode }) => {
         </div>
     );
 });
-
-// --- ADMIN TOOL: DOWNLOAD DB DUMP (Use this to create buses.json) ---
-const AdminDownloadButton = ({ db }) => {
-    const handleDownload = async () => {
-        if (!db) return alert("Firebase not connected");
-        if (!confirm("This will read ALL documents and use quota. Only do this once per update. Continue?")) return;
-        
-        try {
-            const snapshot = await getDocs(collection(db, "buses"));
-            const allBuses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const jsonString = JSON.stringify(allBuses, null, 2);
-            const blob = new Blob([jsonString], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = "buses.json";
-            document.body.appendChild(link);
-            link.click();
-        } catch (e) {
-            alert("Error downloading: " + e.message);
-        }
-    };
-
-    return (
-        <div className="fixed bottom-20 left-4 z-50">
-            <button onClick={handleDownload} className="bg-red-600 hover:bg-red-700 text-white p-3 rounded-full shadow-lg border-2 border-white flex items-center gap-2 font-bold text-xs">
-                <Download size={16} /> ADMIN DUMP
-            </button>
-        </div>
-    );
-};
 
 // --- DEPOT ENQUIRY COMPONENT ---
 const DepotEnquiry = () => {
@@ -216,7 +160,7 @@ export default function App() {
     const location = useLocation();
     const navigate = useNavigate();
     const resultsRef = useRef(null);
-    const quickLinksRef = useRef(null);
+    const quickLinksRef = useRef(null); // Ref for Quick Links section
 
     // Search State
     const [searchFrom, setSearchFrom] = useState('');
@@ -234,7 +178,9 @@ export default function App() {
 
     // GOOGLE TRANSLATE INJECTION
     useEffect(() => {
+        // Check if script already exists to avoid duplication
         if (document.getElementById('google-translate-script')) return;
+
         const addScript = document.createElement('script');
         addScript.id = 'google-translate-script';
         addScript.setAttribute('src', '//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit');
@@ -246,8 +192,12 @@ export default function App() {
                     pageLanguage: 'en',
                     layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE,
                     autoDisplay: false,
-                    includedLanguages: 'en,ml,hi,ta,kn' 
+                    includedLanguages: 'en,ml,hi,ta,kn' // English, Malayalam, Hindi, Tamil, Kannada
                 }, 'google_translate_element');
+
+                // Second instance for mobile if needed, though ID must be unique. 
+                // We will move the element in DOM or handle via CSS usually. 
+                // For simplicity, we target one ID and we will place it strategically.
             }
         };
     }, []);
@@ -265,10 +215,15 @@ export default function App() {
         const path = location.pathname;
         const params = path.split('/');
 
+        // Reset Pagination on View Change
+        setCurrentPage(1);
+
+        // 1. Bus Detail URL: /bus/manjeri-to-kozhikode-0830-am-private
         if (path.startsWith('/bus/')) {
             const busSlug = params[2];
             if (buses.length > 0) {
                 const bus = buses.find(b => generateBusSlug(b) === busSlug);
+
                 if (bus) {
                     setSelectedBus(bus);
                     setView('detail');
@@ -304,12 +259,12 @@ export default function App() {
         } else if (path === '/private') {
             setView('private');
         } else if (['/about', '/contact', '/privacy', '/terms', '/disclaimer', '/cookies'].includes(path)) {
-            setView(path.substring(1));
+            setView(path.substring(1)); // Remove leading slash, catches /cookies
         } else {
             setView('home');
         }
 
-        // DYNAMIC SEO TAGS
+        // --- DYNAMIC SEO TITLES & META TAGS (UPDATED) ---
         let title = "evidebus.com - Find Private & KSRTC Bus Timings";
         let description = "Find real-time Kerala bus timings for KSRTC and Private buses. Check routes, fares, and live station boards.";
         let image = `${window.location.origin}/favicon/evidebus-hero.png`;
@@ -326,17 +281,21 @@ export default function App() {
         } else if (view === 'board') {
             title = `${boardStop} Live Bus Stand Status - evidebus.com`;
             description = `Live departure board for ${boardStop} bus stand. See upcoming KSRTC and Private buses in real-time.`;
+        } else if (view === 'cookies') {
+            title = "Cookie Policy - evidebus.com";
         } else if (view === 'results' && searchFrom) {
             title = `Bus from ${searchFrom} to ${searchTo || 'Anywhere'} - evidebus.com`;
             description = `Find bus timings from ${searchFrom} to ${searchTo}. Compare KSRTC and Private bus schedules and fares.`;
         }
 
+        // Apply to DOM
         document.title = title;
         updateMetaTag('description', description);
         updateMetaTag('og:title', title);
         updateMetaTag('og:description', description);
         updateMetaTag('og:url', window.location.href);
         updateMetaTag('og:type', 'website');
+
         updateMetaTag('og:image', image);
         updateMetaTag('twitter:image', image);
 
@@ -353,48 +312,25 @@ export default function App() {
 
     }, [location, buses, loading, view, selectedBus, boardStop, searchFrom, searchTo]);
 
-    // ---------------------------------------------------------
-    //  ⚡️ HYBRID DATA LOADING (FIXED FOR QUOTA) ⚡️
-    // ---------------------------------------------------------
+    // Firebase Listener
     useEffect(() => {
-        async function loadBuses() {
-            setLoading(true);
-            try {
-                // 1. Try to fetch static JSON first (Free, Unlimited Reads)
-                // Ensure you have placed 'buses.json' in your public/ folder!
-                const response = await fetch('/buses.json');
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log("Loaded buses from Static JSON (Quota Safe)");
-                    setBuses(data);
-                } else {
-                    throw new Error("JSON not found");
-                }
-            } catch (error) {
-                console.warn("Static data failed, falling back to Firestore (Quota Risk!). Ensure buses.json is in public folder.");
-                
-                // 2. Fallback to Firestore (Only reads ONCE per page load, not real-time)
-                if (db) {
-                    try {
-                        const q = query(collection(db, "buses"), orderBy("time"));
-                        const snapshot = await getDocs(q); // Use getDocs instead of onSnapshot
-                        const busData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setBuses(busData);
-                    } catch (fsError) {
-                        console.error("Firestore load failed:", fsError);
-                        // Optional: Load seed data if everything fails
-                        // setBuses(SEED_BUSES);
-                    }
-                }
-            }
+        if (!db) {
             setLoading(false);
+            return;
         }
-
-        loadBuses();
-        // Removed real-time listener to save costs. 
-        // New buses will appear only after you regenerate buses.json
-    }, []);
+        const q = query(collection(db, "buses"), orderBy("time"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const busData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setBuses(busData);
+            setLoading(false);
+            // Sync selected bus details in real-time
+            if (selectedBus) {
+                const updatedSelected = busData.find(b => b.id === selectedBus.id);
+                if (updatedSelected) setSelectedBus(updatedSelected);
+            }
+        }, (error) => { console.error(error); setLoading(false); });
+        return () => unsubscribe();
+    }, [selectedBus]);
 
     // Scroll to results
     useEffect(() => {
@@ -466,13 +402,7 @@ export default function App() {
     const addNewBus = async (newBusData) => {
         if (!db) return showToast("Firebase not connected!", "error");
         try {
-            // Write to Firestore (Cheap)
-            const docRef = await addDoc(collection(db, "buses"), newBusData);
-            const newBusWithId = { id: docRef.id, ...newBusData };
-            
-            // Optimistically update UI so user sees their bus immediately
-            setBuses(prev => [...prev, newBusWithId]);
-            
+            await addDoc(collection(db, "buses"), newBusData);
             showToast("Bus added successfully! +20 Points", "success");
             addPoints(20);
             navigate('/');
@@ -512,15 +442,7 @@ export default function App() {
             else if (type === 'board') setSuggestionsBoard([]);
             return;
         }
-
-        const cleanVal = val.toLowerCase().trim();
-        const keywords = getSearchKeywords(cleanVal);
-
-        const filtered = BUS_STOPS.filter(stop => {
-            const stopLower = stop.toLowerCase();
-            return keywords.some(k => stopLower.includes(k));
-        }).slice(0, 8);
-
+        const filtered = BUS_STOPS.filter(stop => stop.toLowerCase().startsWith(val.toLowerCase())).slice(0, 8);
         if (type === 'from') setSuggestionsFrom(filtered);
         else if (type === 'to') setSuggestionsTo(filtered);
         else if (type === 'board') setSuggestionsBoard(filtered);
@@ -562,35 +484,20 @@ export default function App() {
         }
     };
 
-    // --- SMART SEARCH FILTER ALGORITHM ---
+    // Filter Logic
     const filteredBuses = useMemo(() => {
         return buses.filter(bus => {
-            const fromKeywords = getSearchKeywords(searchFrom);
-            const toKeywords = getSearchKeywords(searchTo);
-
+            const sFrom = searchFrom.toLowerCase().trim();
+            const sTo = searchTo.toLowerCase().trim();
             const stopsStr = (bus.stops || bus.route || "").toLowerCase();
             const fullPath = `${(bus.from || "").toLowerCase()} ${stopsStr} ${(bus.to || "").toLowerCase()}`;
 
-            const hasFrom = !searchFrom || fromKeywords.some(keyword => fullPath.includes(keyword));
-            const hasTo = !searchTo || toKeywords.some(keyword => fullPath.includes(keyword));
+            const hasFrom = !sFrom || fullPath.includes(sFrom);
+            const hasTo = !sTo || fullPath.includes(sTo);
 
             let isDirectionCorrect = true;
-            if (searchFrom && searchTo && hasFrom && hasTo) {
-                let fromIndex = -1;
-                for (let k of fromKeywords) {
-                     const idx = fullPath.indexOf(k);
-                     if (idx !== -1) { fromIndex = idx; break; }
-                }
-
-                let toIndex = -1;
-                for (let k of toKeywords) {
-                     const idx = fullPath.indexOf(k);
-                     if (idx !== -1) { toIndex = idx; break; }
-                }
-
-                if (fromIndex >= 0 && toIndex >= 0 && fromIndex >= toIndex) {
-                    isDirectionCorrect = false;
-                }
+            if (sFrom && sTo && hasFrom && hasTo) {
+                if (fullPath.indexOf(sFrom) >= fullPath.indexOf(sTo)) isDirectionCorrect = false;
             }
 
             if (view === 'ksrtc' && bus.type !== 'KSRTC') return false;
@@ -601,9 +508,7 @@ export default function App() {
                 const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
                 let checkTime = bus.time;
                 if (searchFrom && bus.detailedStops) {
-                    const stop = bus.detailedStops.find(s => 
-                        fromKeywords.some(k => s.name.toLowerCase().includes(k))
-                    );
+                    const stop = bus.detailedStops.find(s => s.name.toLowerCase() === searchFrom.toLowerCase());
                     if (stop && stop.time !== 'TBD') checkTime = stop.time;
                 }
                 if (getMinutesFromMidnight(checkTime) !== -1 && getMinutesFromMidnight(checkTime) < currentMinutes) return false;
@@ -615,45 +520,19 @@ export default function App() {
     }, [buses, searchFrom, searchTo, view, resultFilter, filterType]);
 
     // --- PAGINATION LOGIC ---
+    const paginatedBuses = useMemo(() => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        return filteredBuses.slice(startIndex, startIndex + itemsPerPage);
+    }, [filteredBuses, currentPage]);
+
     const totalPages = Math.ceil(filteredBuses.length / itemsPerPage);
 
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchFrom, searchTo, filterType, resultFilter, view]); 
-
-    useEffect(() => {
-        if (currentPage > totalPages && totalPages > 0) {
-            setCurrentPage(1);
-        }
-    }, [totalPages, currentPage]);
-
-    const paginatedBuses = useMemo(() => {
-        const safePage = Math.max(1, Math.min(currentPage, totalPages || 1));
-        const startIndex = (safePage - 1) * itemsPerPage;
-        return filteredBuses.slice(startIndex, startIndex + itemsPerPage);
-    }, [filteredBuses, currentPage, totalPages]);
-
-    const handlePageChange = (direction) => {
-        let newPage = currentPage;
-        
-        if (direction === 'next' && currentPage < totalPages) {
-            newPage = currentPage + 1;
-        } else if (direction === 'prev' && currentPage > 1) {
-            newPage = currentPage - 1;
-        } else if (typeof direction === 'number') {
-            newPage = direction;
-        }
-
-        if (newPage !== currentPage) {
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
             setCurrentPage(newPage);
-            setTimeout(() => {
-                if (resultsRef.current) {
-                    const yOffset = -100; 
-                    const element = resultsRef.current;
-                    const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
-                    window.scrollTo({ top: y, behavior: 'smooth' });
-                }
-            }, 50);
+            if (resultsRef.current) {
+                resultsRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
     };
 
@@ -662,22 +541,17 @@ export default function App() {
         if (!boardStop) return [];
         const now = new Date();
         const currentMinutes = now.getHours() * 60 + now.getMinutes();
-        const boardKeywords = getSearchKeywords(boardStop);
 
         const upcomingRaw = buses
             .filter(bus => {
                 if (!bus.detailedStops) return false;
-                const stop = bus.detailedStops.find(s => 
-                    boardKeywords.some(k => s.name.toLowerCase().includes(k))
-                );
+                const stop = bus.detailedStops.find(s => s.name.toLowerCase() === boardStop.toLowerCase());
                 if (!stop || stop.time === 'TBD') return false;
                 const busMins = getMinutesFromMidnight(stop.time);
                 return busMins !== -1 && busMins >= currentMinutes;
             })
             .map(bus => {
-                const stop = bus.detailedStops.find(s => 
-                     boardKeywords.some(k => s.name.toLowerCase().includes(k))
-                );
+                const stop = bus.detailedStops.find(s => s.name.toLowerCase() === boardStop.toLowerCase());
                 return { ...bus, boardTime: stop.time, boardMins: getMinutesFromMidnight(stop.time) };
             });
 
@@ -709,13 +583,10 @@ export default function App() {
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-gray-700 pb-20 relative">
-            {/* --- ADMIN DOWNLOAD BUTTON (Use this once quota resets to get buses.json) --- */}
-            {/* UNCOMMENT THE LINE BELOW TOMORROW TO DOWNLOAD YOUR DATA */}
-            {/* <AdminDownloadButton db={db} /> */}
-
             {/* --- BOARD VIEW --- */}
             {view === 'board' && (
                 <div className={`fixed inset-0 z-50 p-6 md:p-10 flex flex-col font-mono overflow-hidden transition-colors duration-500 ${boardDarkMode ? 'bg-black text-white' : 'bg-gray-50 text-gray-900'}`}>
+                    {/* Board Header */}
                     <div className={`flex justify-between items-start border-b-4 pb-6 mb-6 ${boardDarkMode ? 'border-teal-900' : 'border-teal-600'}`}>
                         <div>
                             <div className="flex items-center gap-4 mb-2">
@@ -740,6 +611,7 @@ export default function App() {
                         </div>
                     </div>
 
+                    {/* Bus List Header */}
                     <div className={`grid grid-cols-12 gap-4 uppercase text-sm font-bold tracking-widest px-4 mb-4 ${boardDarkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                         <div className="col-span-2">Time</div>
                         <div className="col-span-4">Service / Bus Name</div>
@@ -747,6 +619,7 @@ export default function App() {
                         <div className="col-span-2 text-right">Type</div>
                     </div>
 
+                    {/* Board Content */}
                     <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
                         {getBoardBuses.length > 0 ? getBoardBuses.map((bus, i) => (
                             <div key={bus.id} className={`grid grid-cols-12 gap-4 border-l-4 p-4 items-center rounded-r-lg transition-all group ${boardDarkMode
@@ -773,6 +646,7 @@ export default function App() {
                         )}
                     </div>
 
+                    {/* Board Footer */}
                     <div className={`mt-6 pt-4 border-t flex justify-between items-center text-xs uppercase tracking-wider ${boardDarkMode ? 'border-gray-900 text-gray-600' : 'border-gray-200 text-gray-400'}`}>
                         <div>Powered by evidebus.com</div>
                         <div>Data relies on community contribution. Verify locally.</div>
@@ -790,14 +664,16 @@ export default function App() {
           ::-webkit-scrollbar { width: 4px; }
           ::-webkit-scrollbar-track { background: #f1f1f1; }
           ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
+          
+          /* Custom Google Translate Styling */
           .goog-te-gadget-simple {
-              background-color: transparent !important;
-              border: none !important;
-              padding: 0 !important;
-              font-size: 12px !important;
-              display: flex !important;
-              align-items: center !important;
-              cursor: pointer !important;
+             background-color: transparent !important;
+             border: none !important;
+             padding: 0 !important;
+             font-size: 12px !important;
+             display: flex !important;
+             align-items: center !important;
+             cursor: pointer !important;
           }
           .goog-te-gadget-simple img { display: none !important; }
           .goog-te-menu-value { color: #555 !important; }
@@ -806,13 +682,18 @@ export default function App() {
         `}</style>
 
             <ToastContainer toasts={toasts} />
+            {/* Hide Nav on Board View */}
             {view !== 'board' && <Navbar toggleMenu={() => setIsMenuOpen(!isMenuOpen)} />}
             <MobileMenu isOpen={isMenuOpen} closeMenu={() => setIsMenuOpen(false)} />
 
+            {/* --- MAIN CONTENT --- */}
             <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 ${view === 'board' ? 'hidden' : ''}`}>
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
+                    {/* --- LEFT COLUMN --- */}
                     <div className="lg:col-span-8 space-y-5">
+
+                        {/* MOBILE CONTRIBUTION BAR */}
                         <div className="lg:hidden bg-white rounded-xl p-3 shadow-sm border border-gray-100 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <div className="bg-yellow-100 p-1.5 rounded-full text-yellow-600">
@@ -832,6 +713,7 @@ export default function App() {
                             <>
                                 <ImageCarousel />
                                 <NewsTicker />
+                                {/* HERO SEARCH */}
                                 <div className="bg-white p-5 rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] border border-gray-100 relative z-10">
                                     <div className="flex items-center gap-2 mb-4 text-gray-800 font-bold text-base">
                                         <Search className="text-teal-700" size={20} />
@@ -902,6 +784,7 @@ export default function App() {
                                     </div>
                                 </div>
 
+                                {/* RESULTS LIST WITH PAGINATION & UPDATED CARD */}
                                 {(view === 'ksrtc' || view === 'private') && (
                                     <div className="animate-fade-in" ref={resultsRef}>
                                         <div className="flex items-center justify-between mb-3 px-1">
@@ -926,10 +809,7 @@ export default function App() {
                                                         let displayTime = bus.time;
                                                         let isIntermediate = false;
                                                         if (searchFrom && bus.detailedStops) {
-                                                            const fromKeywords = getSearchKeywords(searchFrom);
-                                                            const stop = bus.detailedStops.find(s => 
-                                                                fromKeywords.some(k => s.name.toLowerCase().includes(k))
-                                                            );
+                                                            const stop = bus.detailedStops.find(s => s.name.toLowerCase() === searchFrom.toLowerCase());
                                                             if (stop && stop.time !== 'TBD') {
                                                                 displayTime = stop.time;
                                                                 isIntermediate = true;
@@ -939,10 +819,17 @@ export default function App() {
                                                         const isKSRTC = bus.type === 'KSRTC' || bus.type === 'Swift';
 
                                                         return (
-                                                            <div key={bus.id} onClick={() => handleBusClick(bus)} className="relative bg-white rounded-xl sm:rounded-2xl border border-teal-100 p-4 sm:p-5 shadow-sm hover:shadow-md hover:border-teal-200 transition-all cursor-pointer overflow-hidden group">
+                                                            <div
+                                                                key={bus.id}
+                                                                onClick={() => handleBusClick(bus)}
+                                                                className="relative bg-white rounded-xl sm:rounded-2xl border border-teal-100 p-4 sm:p-5 shadow-sm hover:shadow-md hover:border-teal-200 transition-all cursor-pointer overflow-hidden group"
+                                                            >
+                                                                {/* Watermark */}
                                                                 <div className="absolute top-1/2 -translate-y-1/2 right-[-10px] sm:right-[-20px] font-black text-6xl sm:text-8xl text-gray-50 italic pointer-events-none select-none z-0 tracking-tighter opacity-50 sm:opacity-80">
                                                                     {isKSRTC ? 'KSRTC' : 'PRIVATE'}
                                                                 </div>
+
+                                                                {/* TOP SECTION: Name & Route */}
                                                                 <div className="relative z-10 flex justify-between items-start mb-3">
                                                                     <div className="min-w-0 pr-2">
                                                                         <h4 className="font-bold text-lg sm:text-xl text-teal-900 leading-tight truncate">{bus.name}</h4>
@@ -957,25 +844,36 @@ export default function App() {
                                                                         <ChevronRight size={20} className="text-gray-300 sm:w-6 sm:h-6" />
                                                                     </div>
                                                                 </div>
+
+                                                                {/* SEPARATOR */}
                                                                 <div className="relative z-10 border-t border-dashed border-gray-200 my-3"></div>
+
+                                                                {/* BOTTOM SECTION: Time & Tags */}
                                                                 <div className="relative z-10 flex items-center gap-3 sm:gap-5">
+                                                                    {/* Fixed Time Box */}
                                                                     <div className="bg-gray-50 rounded-xl p-2 sm:p-3 w-20 sm:w-24 shrink-0 text-center border border-gray-100 flex flex-col justify-center">
                                                                         <span className="block text-2xl sm:text-3xl font-bold text-gray-900 leading-none">{displayTime.split(' ')[0]}</span>
                                                                         <span className="block text-[10px] sm:text-xs font-bold text-gray-400 uppercase mt-1">{displayTime.split(' ')[1]}</span>
                                                                     </div>
+
+                                                                    {/* Tags Container */}
                                                                     <div className="flex-1 min-w-0">
                                                                         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                                                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${isKSRTC ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                                                                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${isKSRTC ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'
+                                                                                }`}>
                                                                                 {bus.type}
                                                                             </span>
+
                                                                             {isIntermediate && (
                                                                                 <span className="bg-teal-50 text-teal-700 border border-teal-100 px-2.5 py-1 rounded-lg text-[10px] font-medium">
                                                                                     Via {searchFrom}
                                                                                 </span>
                                                                             )}
+
                                                                             <span className="bg-gray-50 text-gray-500 border border-gray-100 px-2.5 py-1 rounded-lg text-[10px] font-medium">
                                                                                 Crowd: {bus.crowdLevel || "Low"}
                                                                             </span>
+
                                                                             <span className="bg-gray-50 text-gray-500 border border-gray-100 px-2.5 py-1 rounded-lg text-[10px] font-medium">
                                                                                 Est. Fare: {estimatedFare ? `₹${estimatedFare}` : 'Check'}
                                                                             </span>
@@ -985,6 +883,8 @@ export default function App() {
                                                             </div>
                                                         );
                                                     }) : (
+
+                                                        // NO RESULTS & ADD BUS CTA
                                                         <div className="flex flex-col items-center justify-center py-12 px-4 bg-white rounded-xl border border-dashed border-gray-300 text-center">
                                                             <div className="bg-gray-50 p-4 rounded-full mb-4">
                                                                 <Bus size={32} className="text-gray-400" />
@@ -1007,28 +907,35 @@ export default function App() {
                                                     )}
                                                 </div>
 
+                                                {/* PAGINATION CONTROLS */}
                                                 {filteredBuses.length > itemsPerPage && (
-                                                    <div className="flex flex-col items-center mt-8 gap-3">
-                                                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                                                            Showing Page {currentPage} of {totalPages}
+                                                    <div className="flex justify-center items-center gap-4 mt-6">
+                                                        <button
+                                                            onClick={() => handlePageChange(currentPage - 1)}
+                                                            disabled={currentPage === 1}
+                                                            className={`p-2 rounded-lg border transition-all ${currentPage === 1 ? 'bg-gray-50 text-gray-300 border-gray-100' : 'bg-white text-teal-700 border-teal-200 hover:bg-teal-50'}`}
+                                                        >
+                                                            <ChevronLeft size={20} />
+                                                        </button>
+                                                        <span className="text-xs font-bold text-gray-600">
+                                                            Page {currentPage} of {totalPages}
                                                         </span>
-                                                        <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm">
-                                                            <button onClick={() => handlePageChange('prev')} disabled={currentPage === 1} className={`p-3 rounded-lg flex items-center gap-2 text-xs font-bold transition-all duration-200 ${currentPage === 1 ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-white text-teal-700 hover:bg-teal-50 hover:shadow-md active:scale-95'}`}>
-                                                                <ChevronLeft size={16} /> <span className="hidden sm:inline">Previous</span>
-                                                            </button>
-                                                            <div className="px-4 py-2 bg-gray-50 rounded-lg text-sm font-black text-teal-800 min-w-[3rem] text-center">
-                                                                {currentPage}
-                                                            </div>
-                                                            <button onClick={() => handlePageChange('next')} disabled={currentPage === totalPages} className={`p-3 rounded-lg flex items-center gap-2 text-xs font-bold transition-all duration-200 ${currentPage === totalPages ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-white text-teal-700 hover:bg-teal-50 hover:shadow-md active:scale-95'}`}>
-                                                                <span className="hidden sm:inline">Next</span> <ChevronRight size={16} />
-                                                            </button>
-                                                        </div>
+                                                        <button
+                                                            onClick={() => handlePageChange(currentPage + 1)}
+                                                            disabled={currentPage === totalPages}
+                                                            className={`p-2 rounded-lg border transition-all ${currentPage === totalPages ? 'bg-gray-50 text-gray-300 border-gray-100' : 'bg-white text-teal-700 border-teal-200 hover:bg-teal-50'}`}
+                                                        >
+                                                            <ChevronRight size={20} />
+                                                        </button>
                                                     </div>
                                                 )}
 
+                                                {/* --- MOVED FEATURE BANNERS TO RESULTS FOOTER --- */}
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8 pt-6 border-t border-gray-100">
+                                                    {/* 1. Community Contribution Banner */}
                                                     <div className="bg-gradient-to-r from-teal-700 to-teal-900 rounded-xl p-5 shadow-md text-white relative overflow-hidden group flex flex-col justify-between">
                                                         <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+
                                                         <div>
                                                             <h3 className="text-lg font-bold flex items-center gap-2 mb-2">
                                                                 <Star className="text-yellow-300 fill-yellow-300" size={18} />
@@ -1038,13 +945,19 @@ export default function App() {
                                                                 Know a bus route or timing we missed? <span className="text-white font-bold">Your single contribution can help thousands of travelers</span> reach their destination on time.
                                                             </p>
                                                         </div>
-                                                        <button onClick={() => navigate('/add-bus')} className="w-full bg-white/10 hover:bg-white text-white hover:text-teal-900 border border-white/20 py-2.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2">
+
+                                                        <button
+                                                            onClick={() => navigate('/add-bus')}
+                                                            className="w-full bg-white/10 hover:bg-white text-white hover:text-teal-900 border border-white/20 py-2.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2"
+                                                        >
                                                             <PlusCircle size={16} /> Add Missing Bus
                                                         </button>
                                                     </div>
 
+                                                    {/* 2. Digital Stand Display Banner */}
                                                     <div className="bg-gradient-to-r from-indigo-800 to-slate-900 rounded-xl p-5 shadow-md text-white relative overflow-hidden group flex flex-col justify-between">
                                                         <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/20 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
+
                                                         <div>
                                                             <h3 className="text-lg font-bold flex items-center gap-2 mb-2">
                                                                 <Monitor className="text-blue-300" size={18} />
@@ -1054,8 +967,14 @@ export default function App() {
                                                                 Turn your shop TV or phone into a real-time departure board for any stop.
                                                             </p>
                                                         </div>
+
                                                         <button
-                                                            onClick={() => { setShowBoardInput(true); setTimeout(() => quickLinksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100); }}
+                                                            onClick={() => {
+                                                                setShowBoardInput(true);
+                                                                setTimeout(() => {
+                                                                    quickLinksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                                }, 100);
+                                                            }}
                                                             className="w-full bg-white/10 hover:bg-white text-white hover:text-indigo-900 border border-white/20 py-2.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2"
                                                         >
                                                             <Maximize2 size={16} /> Launch Display
@@ -1067,6 +986,7 @@ export default function App() {
                                     </div>
                                 )}
 
+                                {/* TOOLKIT & FARE GRID */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div ref={quickLinksRef} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
                                         <h4 className="font-bold text-gray-800 mb-2 text-xs uppercase tracking-wide">Quick Links</h4>
@@ -1075,6 +995,7 @@ export default function App() {
                                                 <Monitor size={14} /> Digital Bus Stand Display
                                             </button>
 
+                                            {/* Board Input Dropdown */}
                                             {showBoardInput && (
                                                 <div className="p-3 bg-gray-50 rounded-lg animate-fade-in border border-gray-200 mb-2 relative">
                                                     <input
@@ -1086,6 +1007,7 @@ export default function App() {
                                                             updateSuggestions(e.target.value, 'board');
                                                         }}
                                                     />
+                                                    {/* Suggestions Specific to Board */}
                                                     {suggestionsBoard.length > 0 && (
                                                         <div className="bg-white border border-gray-200 rounded text-xs mb-2 max-h-32 overflow-y-auto absolute z-20 w-full left-0 top-12 shadow-lg">
                                                             {suggestionsBoard.map((s, i) => (
@@ -1102,12 +1024,15 @@ export default function App() {
                                             <button onClick={() => navigate('/add-bus')} className="w-full flex items-center gap-2 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50 hover:pl-2 rounded transition-all border-b border-gray-50 last:border-0 text-left">
                                                 <PlusCircle size={14} /> Add Missing Bus
                                             </button>
+
                                             <button onClick={() => navigate('/depot')} className="w-full flex items-center gap-2 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50 hover:pl-2 rounded transition-all border-b border-gray-50 last:border-0 text-left">
                                                 <Phone size={14} /> Depot Enquiry Numbers
                                             </button>
+
                                             <button onClick={() => navigate('/stands')} className="w-full flex items-center gap-2 py-2 text-xs font-bold text-teal-700 hover:bg-teal-50 hover:pl-2 rounded transition-all border-b border-gray-50 last:border-0 text-left">
                                                 <MapPin size={14} /> Bus Stand List
                                             </button>
+
                                             {[
                                                 { t: "Official KSRTC Booking", l: "https://online.keralartc.com" },
                                                 { t: "Student Concession", l: "https://concessionksrtc.com/school-register" },
@@ -1124,9 +1049,11 @@ export default function App() {
                                     <FareCalculator />
                                 </div>
 
+                                {/* Mobile Google Translate Widget */}
                                 <div className="lg:hidden mt-4 flex items-center justify-center bg-gray-100 p-2 rounded-lg">
                                     <div id="google_translate_element" className="scale-90 origin-center"></div>
                                 </div>
+
                                 <SeoContent onQuickSearch={handleQuickSearch} />
                             </>
                         )}
@@ -1140,15 +1067,23 @@ export default function App() {
                             />
                         )}
 
-                        {view === 'depot' && <DepotEnquiry />}
-                        {view === 'bus-stands' && <BusStandList onBack={() => navigate('/')} />}
+                        {view === 'depot' && (
+                            <DepotEnquiry />
+                        )}
 
+                        {view === 'bus-stands' && (
+                            <BusStandList onBack={() => navigate('/')} />
+                        )}
+
+                        {/* FOOTER PAGES */}
                         {['about', 'contact', 'privacy', 'terms', 'disclaimer', 'cookies'].includes(view) && (
                             <FooterPage type={view} onBack={() => navigate('/')} />
                         )}
 
+                        {/* RESULTS VIEW WITH PAGINATION (ALREADY UPDATED ABOVE) */}
                         {view === 'results' && (
                             <div className="animate-fade-in" ref={resultsRef}>
+                                {/* Result Header */}
                                 <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-4">
                                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
                                         <div>
@@ -1162,6 +1097,8 @@ export default function App() {
                                                 ← Back to Search
                                             </button>
                                         </div>
+
+                                        {/* Check Return Trip Link */}
                                         {searchFrom && searchTo && searchTo !== '-' && (
                                             <button
                                                 onClick={() => {
@@ -1173,6 +1110,7 @@ export default function App() {
                                             </button>
                                         )}
                                     </div>
+
                                     <div className="flex gap-2 mt-4">
                                         <button onClick={() => setResultFilter('all')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${resultFilter === 'all' ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>All Buses</button>
                                         <button onClick={() => setResultFilter('upcoming')} className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${resultFilter === 'upcoming' ? 'bg-teal-600 text-white shadow-md' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>Upcoming Only</button>
@@ -1190,10 +1128,7 @@ export default function App() {
                                                 let displayTime = bus.time;
                                                 let isIntermediate = false;
                                                 if (searchFrom && bus.detailedStops) {
-                                                    const fromKeywords = getSearchKeywords(searchFrom);
-                                                    const stop = bus.detailedStops.find(s => 
-                                                        fromKeywords.some(k => s.name.toLowerCase().includes(k))
-                                                    );
+                                                    const stop = bus.detailedStops.find(s => s.name.toLowerCase() === searchFrom.toLowerCase());
                                                     if (stop && stop.time !== 'TBD') {
                                                         displayTime = stop.time;
                                                         isIntermediate = true;
@@ -1203,10 +1138,17 @@ export default function App() {
                                                 const isKSRTC = bus.type === 'KSRTC' || bus.type === 'Swift';
 
                                                 return (
-                                                    <div key={bus.id} onClick={() => handleBusClick(bus)} className="relative bg-white rounded-xl sm:rounded-2xl border border-teal-100 p-4 sm:p-5 shadow-sm hover:shadow-md hover:border-teal-200 transition-all cursor-pointer overflow-hidden group">
+                                                    <div
+                                                        key={bus.id}
+                                                        onClick={() => handleBusClick(bus)}
+                                                        className="relative bg-white rounded-xl sm:rounded-2xl border border-teal-100 p-4 sm:p-5 shadow-sm hover:shadow-md hover:border-teal-200 transition-all cursor-pointer overflow-hidden group"
+                                                    >
+                                                        {/* Watermark */}
                                                         <div className="absolute top-1/2 -translate-y-1/2 right-[-10px] sm:right-[-20px] font-black text-6xl sm:text-8xl text-gray-50 italic pointer-events-none select-none z-0 tracking-tighter opacity-50 sm:opacity-80">
                                                             {isKSRTC ? 'KSRTC' : 'PRIVATE'}
                                                         </div>
+
+                                                        {/* TOP SECTION: Name & Route */}
                                                         <div className="relative z-10 flex justify-between items-start mb-3">
                                                             <div className="min-w-0 pr-2">
                                                                 <h4 className="font-bold text-lg sm:text-xl text-teal-900 leading-tight truncate">{bus.name}</h4>
@@ -1221,15 +1163,21 @@ export default function App() {
                                                                 <ChevronRight size={20} className="text-gray-300 sm:w-6 sm:h-6" />
                                                             </div>
                                                         </div>
+
+                                                        {/* SEPARATOR */}
                                                         <div className="relative z-10 border-t border-dashed border-gray-200 my-3"></div>
+
+                                                        {/* BOTTOM SECTION: Time & Tags */}
                                                         <div className="relative z-10 flex items-center gap-3 sm:gap-5">
+                                                            {/* Fixed Time Box */}
                                                             <div className="bg-gray-50 rounded-xl p-2 sm:p-3 w-20 sm:w-24 shrink-0 text-center border border-gray-100 flex flex-col justify-center">
                                                                 <span className="block text-2xl sm:text-3xl font-bold text-gray-900 leading-none">{displayTime.split(' ')[0]}</span>
                                                                 <span className="block text-[10px] sm:text-xs font-bold text-gray-400 uppercase mt-1">{displayTime.split(' ')[1]}</span>
                                                             </div>
                                                             <div className="flex-1 min-w-0">
                                                                 <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                                                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${isKSRTC ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'}`}>
+                                                                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${isKSRTC ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-blue-50 text-blue-600 border border-blue-100'
+                                                                        }`}>
                                                                         {bus.type}
                                                                     </span>
                                                                     {isIntermediate && (
@@ -1256,6 +1204,9 @@ export default function App() {
                                                     <h3 className="text-lg font-bold text-gray-800 mb-2">No buses found for this route</h3>
                                                     <p className="text-sm text-gray-500 max-w-xs mx-auto mb-6">
                                                         We couldn't find any buses running from <span className="font-bold">{searchFrom}</span> to <span className="font-bold">{searchTo || 'your destination'}</span>.
+                                                        <span className="block mt-3 font-medium text-teal-600">
+                                                            This is a community app — please add buses for this route!
+                                                        </span>
                                                     </p>
                                                     <div className="grid gap-3 w-full max-w-sm">
                                                         <button onClick={() => navigate('/add-bus')} className="w-full bg-teal-600 hover:bg-teal-700 text-white py-3 rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2">
@@ -1272,25 +1223,30 @@ export default function App() {
                                         </div>
 
                                         {filteredBuses.length > itemsPerPage && (
-                                            <div className="flex flex-col items-center mt-8 gap-3">
-                                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                                                    Showing Page {currentPage} of {totalPages}
+                                            <div className="flex justify-center items-center gap-4 mt-6">
+                                                <button
+                                                    onClick={() => handlePageChange(currentPage - 1)}
+                                                    disabled={currentPage === 1}
+                                                    className={`p-2 rounded-lg border transition-all ${currentPage === 1 ? 'bg-gray-50 text-gray-300 border-gray-100' : 'bg-white text-teal-700 border-teal-200 hover:bg-teal-50'}`}
+                                                >
+                                                    <ChevronLeft size={20} />
+                                                </button>
+                                                <span className="text-xs font-bold text-gray-600">
+                                                    Page {currentPage} of {totalPages}
                                                 </span>
-                                                <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-gray-200 shadow-sm">
-                                                    <button onClick={() => handlePageChange('prev')} disabled={currentPage === 1} className={`p-3 rounded-lg flex items-center gap-2 text-xs font-bold transition-all duration-200 ${currentPage === 1 ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-white text-teal-700 hover:bg-teal-50 hover:shadow-md active:scale-95'}`}>
-                                                        <ChevronLeft size={16} /> <span className="hidden sm:inline">Previous</span>
-                                                    </button>
-                                                    <div className="px-4 py-2 bg-gray-50 rounded-lg text-sm font-black text-teal-800 min-w-[3rem] text-center">
-                                                        {currentPage}
-                                                    </div>
-                                                    <button onClick={() => handlePageChange('next')} disabled={currentPage === totalPages} className={`p-3 rounded-lg flex items-center gap-2 text-xs font-bold transition-all duration-200 ${currentPage === totalPages ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-white text-teal-700 hover:bg-teal-50 hover:shadow-md active:scale-95'}`}>
-                                                        <span className="hidden sm:inline">Next</span> <ChevronRight size={16} />
-                                                    </button>
-                                                </div>
+                                                <button
+                                                    onClick={() => handlePageChange(currentPage + 1)}
+                                                    disabled={currentPage === totalPages}
+                                                    className={`p-2 rounded-lg border transition-all ${currentPage === totalPages ? 'bg-gray-50 text-gray-300 border-gray-100' : 'bg-white text-teal-700 border-teal-200 hover:bg-teal-50'}`}
+                                                >
+                                                    <ChevronRight size={20} />
+                                                </button>
                                             </div>
                                         )}
 
+                                        {/* --- MOVED FEATURE BANNERS TO RESULTS FOOTER --- */}
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8 pt-6 border-t border-gray-100">
+                                            {/* 1. Community Contribution Banner */}
                                             <div className="bg-gradient-to-r from-teal-700 to-teal-900 rounded-xl p-5 shadow-md text-white relative overflow-hidden group flex flex-col justify-between">
                                                 <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
                                                 <div>
@@ -1307,6 +1263,7 @@ export default function App() {
                                                 </button>
                                             </div>
 
+                                            {/* 2. Digital Stand Display Banner */}
                                             <div className="bg-gradient-to-r from-indigo-800 to-slate-900 rounded-xl p-5 shadow-md text-white relative overflow-hidden group flex flex-col justify-between">
                                                 <div className="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/20 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
                                                 <div>
@@ -1318,7 +1275,10 @@ export default function App() {
                                                         Turn your shop TV or phone into a real-time departure board for any stop.
                                                     </p>
                                                 </div>
-                                                <button onClick={() => { setShowBoardInput(true); setTimeout(() => quickLinksRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100); }} className="w-full bg-white/10 hover:bg-white text-white hover:text-indigo-900 border border-white/20 py-2.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2">
+                                                <button
+                                                    onClick={() => { setShowBoardInput(true); navigate('/'); }}
+                                                    className="w-full bg-white/10 hover:bg-white text-white hover:text-indigo-900 border border-white/20 py-2.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2"
+                                                >
                                                     <Maximize2 size={16} /> Launch Display
                                                 </button>
                                             </div>
@@ -1328,6 +1288,7 @@ export default function App() {
                             </div>
                         )}
 
+                        {/* DETAIL VIEW */}
                         {view === 'detail' && selectedBus && (
                             <div ref={resultsRef}>
                                 <BusPost
@@ -1353,6 +1314,7 @@ export default function App() {
                         )}
                     </div>
 
+                    {/* --- RIGHT COLUMN --- */}
                     <div className="hidden lg:block lg:col-span-4">
                         <div className="mb-4 flex justify-end">
                             <div id="google_translate_element" className="bg-white px-2 py-1 rounded shadow-sm border border-gray-200"></div>
