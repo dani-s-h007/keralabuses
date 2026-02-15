@@ -366,7 +366,7 @@ export default function App() {
                 
                 if (response.ok) {
                     const data = await response.json();
-                    console.log("Loaded buses from Static JSON (Quota Safe)");
+                     // console.log("Loaded buses from Static JSON (Quota Safe)");
                     setBuses(data);
                 } else {
                     throw new Error("JSON not found");
